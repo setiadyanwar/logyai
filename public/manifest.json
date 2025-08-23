@@ -1,0 +1,57 @@
+{
+  "name": "Logyai - Logbook Magang AI",
+  "short_name": "Logyai",
+  "description": "Aplikasi logbook magang dengan bantuan AI untuk mahasiswa IPB",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "id",
+  "categories": ["productivity", "education"],
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "16x16 32x32",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Tambah Log",
+      "short_name": "Tambah",
+      "description": "Tambah logbook baru",
+      "url": "/?action=add",
+      "icons": [
+        {
+          "src": "/logo.svg",
+          "sizes": "96x96"
+        }
+      ]
+    },
+    {
+      "name": "Lihat Logbook",
+      "short_name": "Logbook",
+      "description": "Lihat semua logbook",
+      "url": "/#tabel",
+      "icons": [
+        {
+          "src": "/logo.svg",
+          "sizes": "96x96"
+        }
+      ]
+    }
+  ]
+}

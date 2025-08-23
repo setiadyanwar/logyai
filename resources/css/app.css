@@ -1,0 +1,316 @@
+@import 'tailwindcss';
+
+@source '../views';
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* Dark mode support */
+@layer base {
+    html {
+        transition: background-color 0.3s ease, color 0.3s ease;
+        --theme-mode: light;
+    }
+    
+    html.dark {
+        color-scheme: dark;
+        --theme-mode: dark;
+        --bg-primary: #111827;
+        --bg-secondary: #1f2937;
+        --text-primary: #f9fafb;
+        --text-secondary: #d1d5db;
+    }
+    
+    html:not(.dark) {
+        color-scheme: light;
+        --theme-mode: light;
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8fafc;
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+    }
+}
+
+/* Force dark mode styles */
+html.dark {
+    background-color: #111827 !important;
+    color: #f9fafb !important;
+}
+
+html.dark body {
+    background-color: #111827 !important;
+    color: #f9fafb !important;
+}
+
+/* Light mode styles - Simple and clean */
+html:not(.dark) .bg-white {
+    background-color: #ffffff !important;
+}
+
+html:not(.dark) .bg-gray-50 {
+    background-color: #f8fafc !important;
+}
+
+html:not(.dark) .bg-gray-100 {
+    background-color: #f1f5f9 !important;
+}
+
+html:not(.dark) .from-white {
+    background-image: linear-gradient(to bottom, #ffffff, #f8fafc) !important;
+}
+
+html:not(.dark) .to-gray-50 {
+    background-image: linear-gradient(to bottom, #f8fafc, #e2e8f0) !important;
+}
+
+/* Simple light mode background */
+html:not(.dark) .min-h-screen {
+    background: linear-gradient(to bottom, #ffffff, #f8fafc) !important;
+}
+
+/* Dark mode styles */
+html.dark .bg-white {
+    background-color: #1f2937 !important;
+}
+
+html.dark .text-gray-900 {
+    color: #f9fafb !important;
+}
+
+html.dark .text-gray-700 {
+    color: #d1d5db !important;
+}
+
+html.dark .text-gray-600 {
+    color: #d1d5db !important;
+}
+
+html.dark .text-gray-800 {
+    color: #e5e7eb !important;
+}
+
+html.dark .border-gray-300 {
+    border-color: #374151 !important;
+}
+
+html.dark .border-gray-200 {
+    border-color: #374151 !important;
+}
+
+html.dark .bg-gray-50 {
+    background-color: #111827 !important;
+}
+
+html.dark .bg-gray-100 {
+    background-color: #1f2937 !important;
+}
+
+html.dark .bg-gray-800 {
+    background-color: #1f2937 !important;
+}
+
+html.dark .bg-gray-900 {
+    background-color: #111827 !important;
+}
+
+html.dark .from-white {
+    background-image: linear-gradient(to bottom, #1f2937, #111827) !important;
+}
+
+html.dark .to-gray-50 {
+    background-image: linear-gradient(to bottom, #111827, #000000) !important;
+}
+
+/* Specific component overrides */
+html.dark .min-h-screen {
+    background: linear-gradient(to bottom, #1f2937, #111827) !important;
+}
+
+/* Simple text colors for light mode */
+html:not(.dark) .text-gray-900 {
+    color: #0f172a !important;
+}
+
+html:not(.dark) .text-gray-800 {
+    color: #1e293b !important;
+}
+
+html:not(.dark) .text-gray-700 {
+    color: #334155 !important;
+}
+
+html:not(.dark) .text-gray-600 {
+    color: #475569 !important;
+}
+
+html:not(.dark) .text-gray-500 {
+    color: #64748b !important;
+}
+
+/* Simple borders for light mode */
+html:not(.dark) .border {
+    border-width: 1px !important;
+}
+
+html:not(.dark) .border-gray-200 {
+    border-color: #e5e7eb !important;
+}
+
+html:not(.dark) .border-gray-300 {
+    border-color: #d1d5db !important;
+}
+
+/* Simple button styling */
+html:not(.dark) .bg-indigo-600 {
+    background-color: #6366f1 !important;
+}
+
+html:not(.dark) .bg-indigo-600:hover {
+    background-color: #5855eb !important;
+}
+
+html:not(.dark) .bg-green-600 {
+    background-color: #10b981 !important;
+}
+
+html:not(.dark) .bg-green-600:hover {
+    background-color: #059669 !important;
+}
+
+/* Simple table styling */
+html:not(.dark) table {
+    background-color: #ffffff !important;
+}
+
+html:not(.dark) thead {
+    background-color: #f9fafb !important;
+}
+
+html:not(.dark) tbody tr:hover {
+    background-color: #f8fafc !important;
+}
+
+/* Simple card styling */
+html:not(.dark) .rounded-xl {
+    background-color: #ffffff !important;
+    border: 1px solid #e5e7eb !important;
+}
+
+/* Simple header styling */
+html:not(.dark) header {
+    background-color: rgba(255, 255, 255, 0.95) !important;
+    border-bottom: 1px solid #e5e7eb !important;
+}
+
+/* Simple input styling */
+html:not(.dark) input[type="date"],
+html:not(.dark) input[type="time"],
+html:not(.dark) input[type="text"],
+html:not(.dark) input[type="file"],
+html:not(.dark) select,
+html:not(.dark) textarea {
+    background-color: #ffffff !important;
+    border: 1px solid #d1d5db !important;
+    color: #1e293b !important;
+}
+
+html:not(.dark) input[type="date"]:focus,
+html:not(.dark) input[type="time"]:focus,
+html:not(.dark) input[type="text"]:focus,
+html:not(.dark) input[type="file"]:focus,
+html:not(.dark) select:focus,
+html:not(.dark) textarea:focus {
+    border-color: #6366f1 !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+}
+
+/* Simple placeholder colors */
+html:not(.dark) input::placeholder,
+html:not(.dark) textarea::placeholder {
+    color: #94a3b8 !important;
+}
+
+/* Simple badge styling */
+html:not(.dark) .bg-green-100 {
+    background-color: #d1fae5 !important;
+    color: #065f46 !important;
+}
+
+html:not(.dark) .bg-yellow-100 {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+}
+
+html:not(.dark) .bg-red-100 {
+    background-color: #fee2e2 !important;
+    color: #991b1b !important;
+}
+
+/* Utilities untuk animasi gradient teks */
+@layer utilities {
+    @keyframes gradient {
+        0% { background-position: 0% 50% }
+        50% { background-position: 100% 50% }
+        100% { background-position: 0% 50% }
+    }
+    .animate-gradient {
+        animation: gradient 8s linear infinite;
+    }
+
+    @keyframes shine {
+        0% { background-position: 100% }
+        100% { background-position: -100% }
+    }
+    .animate-shine {
+        animation: shine 3s linear infinite;
+    }
+
+    @keyframes gradient-x {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+    }
+    .animate-gradient-x {
+        animation: gradient-x 4s ease infinite;
+    }
+
+    @keyframes sparkle {
+        0%, 100% { opacity: 0; transform: scale(0); }
+        50% { opacity: 1; transform: scale(1); }
+    }
+    .animate-sparkle {
+        animation: sparkle 0.7s ease-in-out;
+    }
+}
+
+/* Action button fixes for mobile and hover issues */
+.action-buttons {
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+}
+
+.action-buttons button {
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    -webkit-touch-callout: none !important;
+}
+
+/* Ensure buttons are always clickable */
+button[type="button"] {
+    pointer-events: auto !important;
+    touch-action: manipulation !important;
+}
+
+/* Mobile touch improvements */
+@media (max-width: 768px) {
+    .action-buttons button {
+        min-height: 44px !important;
+        min-width: 44px !important;
+        padding: 8px 12px !important;
+    }
+}

@@ -1,0 +1,50 @@
+{
+  "packageId": "com.logyai.app",
+  "host": "your-domain.com",
+  "name": "Logyai - Logbook Magang AI",
+  "launcherName": "Logyai",
+  "display": "standalone",
+  "themeColor": "#3b82f6",
+  "backgroundColor": "#ffffff",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://your-domain.com/logo.svg",
+  "maskableIconUrl": "https://your-domain.com/logo.svg",
+  "monochromeIconUrl": "https://your-domain.com/logo.svg",
+  "shortcuts": [
+    {
+      "name": "Tambah Log",
+      "shortName": "Tambah",
+      "url": "/?action=add",
+      "chosenIconUrl": "https://your-domain.com/logo.svg"
+    },
+    {
+      "name": "Lihat Logbook",
+      "shortName": "Logbook",
+      "url": "/#tabel",
+      "chosenIconUrl": "https://your-domain.com/logo.svg"
+    }
+  ],
+  "shareTarget": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "orientation": "portrait",
+  "scope": "/",
+  "lang": "id",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  }
+}
