@@ -1917,6 +1917,7 @@ export default function Welcome() {
                       console.log('🔴 Form change event:', e.type, e.target);
                     }}
                     id="log-form"
+                    key={formKey} // Force re-render dengan key
                     className="space-y-4"
                   >
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-5">
@@ -1925,7 +1926,7 @@ export default function Welcome() {
                         <input 
                           type="date" 
                           className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-indigo-400 dark:focus:ring-indigo-900/30" 
-                          value={form.data.tanggal} 
+                          value={form.data.tanggal || aiGeneratedData?.tanggal || ''} 
                           onChange={(e) => form.setData('tanggal', e.target.value)} 
                           required 
                         />
@@ -1934,7 +1935,7 @@ export default function Welcome() {
                         <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Jenis Kegiatan <span className="text-red-500 font-bold">*</span></label>
                         <select 
                           className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-900/30" 
-                          value={form.data.jenis_kegiatan} 
+                          value={form.data.jenis_kegiatan || aiGeneratedData?.jenis_kegiatan || ''} 
                           onChange={(e) => form.setData('jenis_kegiatan', e.target.value)} 
                           required
                         >
@@ -1974,7 +1975,7 @@ export default function Welcome() {
                         <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Dosen Penggerak <span className="text-red-500 font-bold">*</span></label>
                         <select 
                           className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-900/30" 
-                          value={form.data.dosen_penggerak} 
+                          value={form.data.dosen_penggerak || aiGeneratedData?.dosen_penggerak || ''} 
                           onChange={(e) => form.setData('dosen_penggerak', e.target.value)} 
                           required
                         >
@@ -1989,7 +1990,7 @@ export default function Welcome() {
                         <input 
                           className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-indigo-400 dark:focus:ring-indigo-900/30" 
                           placeholder="Masukkan lokasi kegiatan" 
-                          value={form.data.lokasi} 
+                          value={form.data.lokasi || aiGeneratedData?.lokasi || ''} 
                           onChange={(e) => form.setData('lokasi', e.target.value)} 
                           required 
                         />
@@ -2005,7 +2006,7 @@ export default function Welcome() {
                               type="radio" 
                               name="tipe" 
                               value={t} 
-                              checked={form.data.tipe_penyelenggaraan===t} 
+                              checked={(form.data.tipe_penyelenggaraan || aiGeneratedData?.tipe_penyelenggaraan)===t} 
                               onChange={(e)=>form.setData('tipe_penyelenggaraan', e.target.value as 'hybrid' | 'offline' | 'online')} 
                               className="w-4 h-4 text-indigo-600 focus:ring-4 focus:ring-indigo-100 transition-all duration-200" 
                             />
@@ -2023,7 +2024,7 @@ export default function Welcome() {
                         <input 
                           className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-indigo-400 dark:focus:ring-indigo-900/30" 
                           placeholder="Masukkan judul kegiatan yang jelas dan deskriptif" 
-                          value={form.data.judul} 
+                          value={form.data.judul || aiGeneratedData?.judul || ''} 
                           onChange={(e) => form.setData('judul', e.target.value)} 
                           required 
                         />
@@ -2043,7 +2044,7 @@ export default function Welcome() {
                           className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-indigo-400 dark:focus:ring-indigo-900/30 resize-none" 
                           placeholder="Jelaskan detail kegiatan yang dilakukan, tujuan, dan hasil yang dicapai" 
                           rows={4} 
-                          value={form.data.keterangan} 
+                          value={form.data.keterangan || aiGeneratedData?.keterangan || ''} 
                           onChange={(e) => form.setData('keterangan', e.target.value)} 
                           required 
                         />
