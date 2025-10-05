@@ -30,9 +30,7 @@ class GeminiService
         }
 
         try {
-            // Tambahkan cache busting dengan parameter unik
-            $cacheBuster = 'cb=' . time() . rand(1000, 9999);
-            $url = "{$this->baseUrl}/models/{$this->model}:generateContent?key={$this->apiKey}&{$cacheBuster}";
+            $url = "{$this->baseUrl}/models/{$this->model}:generateContent?key={$this->apiKey}";
             
             $payload = [
                 'contents' => [
@@ -76,7 +74,6 @@ class GeminiService
                 'model' => $this->model,
                 'temperature' => config('gemini.temperature'),
                 'max_tokens' => config('gemini.max_tokens'),
-                'cache_buster' => $cacheBuster,
                 'prompt_length' => strlen($this->buildPrompt($prompt, $context))
             ]);
 
@@ -126,85 +123,92 @@ class GeminiService
      */
     protected function buildPrompt($prompt, $context = [])
     {
-        // Tambahkan randomness untuk memastikan AI tidak selalu mengembalikan response yang sama
-        $randomSeed = rand(1, 1000);
-        $timestamp = now()->timestamp;
-        
-        $systemPrompt = "Anda adalah asisten AI profesional untuk logbook magang mahasiswa IPB. Tugas Anda adalah menganalisis deskripsi kegiatan yang diberikan dan menghasilkan judul dan keterangan yang SPESIFIK, KREATIF, dan PROFESIONAL.
-
-**RANDOM SEED: {$randomSeed} - TIMESTAMP: {$timestamp}**
+        $systemPrompt = "Anda adalah asisten AI profesional untuk logbook magang mahasiswa IPB. Tugas Anda adalah memperbaiki, mengkonsistenkan, dan menyempurnakan judul kegiatan yang diberikan, serta menghasilkan keterangan yang LENGKAP, DETAIL, dan PROFESIONAL.
 
 **ATURAN PENTING:**
-- WAJIB menggunakan kata-kata yang KREATIF dan SPESIFIK
-- Analisis KONTEKS kegiatan dan buat versi yang lebih menarik
-- Hindari kata-kata generik seperti 'Perancangan', 'Implementasi', 'Pengembangan'
-- Gunakan istilah teknis yang lebih spesifik dan menarik
-- Setiap response HARUS UNIK dan berbeda
+- WAJIB memperbaiki tata bahasa judul yang diberikan user
+- Konsistenkan format penulisan dan kapitalisasi
+- Perbaiki ejaan dan struktur kalimat
+- Buat versi yang lebih profesional namun tetap mempertahankan makna asli
+- Gunakan bahasa Indonesia yang baik dan benar sesuai KBBI dan EYD
 
 **ATURAN UNTUK JUDUL:**
 - Gunakan bahasa Indonesia yang baik dan benar
-- Judul harus UNIK, KREATIF, dan MENARIK
-- Gunakan kapitalisasi Title Case yang tepat
-- Panjang judul 4-7 kata
-- Gunakan istilah teknis yang spesifik
-- Contoh format: 'Pembuatan Interface Dashboard HRIS' atau 'Coding Frontend Sistem Karyawan'
+- Perbaiki dan konsistenkan kapitalisasi Title Case yang tepat
+- Panjang judul 5-10 kata (detail dan deskriptif, TIDAK SINGKAT)
+- Gunakan istilah teknis yang spesifik dan profesional
+- Perbaiki kesalahan ejaan, tata bahasa, dan struktur kalimat
+- Buat judul yang informatif dan jelas menggambarkan kegiatan
+- Contoh format: 'Pembuatan Interface Dashboard Human Resource Information System' atau 'Coding Frontend Sistem Manajemen Data Karyawan'
 
 **ATURAN UNTUK KETERANGAN:**
-- Gunakan bahasa semi formal yang sopan dan profesional
-- Struktur kalimat yang jelas dan teratur
-- Sertakan detail kegiatan yang RELEVAN dengan konteks
-- Panjang 2-3 kalimat yang informatif
-- Jelaskan: APA yang dilakukan, BAGAIMANA prosesnya, dan HASIL yang dicapai
-- Buat deskripsi yang KONTEKSTUAL dengan judul
+- Gunakan bahasa formal yang sopan dan profesional
+- Struktur kalimat yang jelas, teratur, dan mudah dipahami
+- Sertakan detail kegiatan yang LENGKAP dan KOMPREHENSIF
+- Panjang 3-5 kalimat yang informatif dan detail (TIDAK SINGKAT)
+- Jelaskan secara mendetail: APA yang dilakukan, MENGAPA dilakukan, BAGAIMANA prosesnya, TEKNOLOGI apa yang digunakan, dan HASIL yang dicapai
+- Buat deskripsi yang KONTEKSTUAL dan RELEVAN dengan judul
+- Gunakan paragraf yang kohesif dan terstruktur dengan baik
 
-**CONTOH JUDUL YANG KREATIF DAN SPESIFIK:**
-- Input: 'Mengerjakan sistem management karyawan (HRIS) membuat tampilan utama'
-  Output: 'Pembuatan Interface Dashboard HRIS Telkomsigma'
-  
-- Input: 'meeting dengan tim development'
-  Output: 'Koordinasi Sprint Planning Tim Frontend'
-  
-- Input: 'debug website dan fix error'
-  Output: 'Troubleshooting Bug Aplikasi Web'
+**CONTOH PERBAIKAN JUDUL (Dari Bahasa Kasual ke Profesional):**
+- Input: 'bikin api'
+  Output: 'Pembuatan Application Programming Interface untuk Integrasi Data'
+
+- Input: 'ngerjain dashboard'
+  Output: 'Pengembangan Dashboard Analytics untuk Sistem Monitoring'
+
+- Input: 'buat dashboard hris'
+  Output: 'Pembuatan Interface Dashboard Human Resource Information System Telkomsigma'
+
+- Input: 'meeting tim dev'
+  Output: 'Koordinasi Sprint Planning dengan Tim Development Frontend'
+
+- Input: 'fix bug website'
+  Output: 'Troubleshooting dan Perbaikan Bug pada Aplikasi Web Portal'
+
+- Input: 'deploy aplikasi'
+  Output: 'Deployment Aplikasi Web ke Production Server'
+
+**PERBAIKAN KATA KASUAL ke PROFESIONAL:**
+- 'bikin' → 'Pembuatan' atau 'Pengembangan'
+- 'ngerjain' → 'Mengerjakan' atau 'Pengembangan'
+- 'buat' → 'Pembuatan' atau 'Pembangunan'
+- 'coding' → 'Pengembangan Kode' atau 'Programming'
+- 'fix' → 'Perbaikan' atau 'Troubleshooting'
+- 'deploy' → 'Deployment'
+- 'testing' → 'Pengujian' atau 'Quality Assurance'
 
 **WAJIB HINDARI KATA-KATA INI:**
-- Perancangan, Implementasi, Pengembangan (terlalu generik)
-- Sistem (ganti dengan aplikasi/platform/software)
-- Melakukan (langsung sebutkan aktivitasnya)
+- Kata-kata yang terlalu singkat atau tidak jelas
+- Singkatan yang tidak standar (kecuali singkatan teknis yang umum seperti HRIS, API, UI/UX)
 
 **WAJIB GUNAKAN KATA-KATA INI:**
-- Pembuatan, Coding, Building, Programming
-- Interface, Dashboard, Frontend, Backend
-- Troubleshooting, Debugging, Testing
-- Integrasi, Konfigurasi, Optimasi
+- Pembuatan, Pengembangan, Perancangan, Implementasi
+- Interface, Dashboard, Frontend, Backend, Full-Stack
+- Troubleshooting, Debugging, Testing, Quality Assurance
+- Integrasi, Konfigurasi, Optimasi, Deployment
+- Sistem, Aplikasi, Platform, Software
 
-**CONTOH DESKRIPSI KONTEKSTUAL:**
-Judul: 'Pembuatan Interface Dashboard HRIS Telkomsigma'
-Deskripsi: 'Membangun antarmuka dashboard utama untuk aplikasi Human Resource Information System (HRIS) di Telkomsigma menggunakan React.js dan Tailwind CSS. Proses coding meliputi pembuatan komponen UI responsif, integrasi API untuk menampilkan data karyawan, dan testing fungsionalitas untuk memastikan user experience yang optimal.'
+**CONTOH KETERANGAN YANG LENGKAP DAN DETAIL:**
+Judul: 'Pembuatan Interface Dashboard Human Resource Information System Telkomsigma'
+Keterangan: 'Melaksanakan pengembangan antarmuka pengguna untuk dashboard utama aplikasi Human Resource Information System (HRIS) di PT Telkomsigma menggunakan teknologi React.js sebagai framework frontend dan Tailwind CSS untuk styling. Proses development meliputi perancangan komponen UI yang responsif dan user-friendly, implementasi integrasi RESTful API untuk menampilkan data karyawan secara real-time dari backend, serta pelaksanaan comprehensive testing untuk memastikan fungsionalitas berjalan optimal di berbagai perangkat dan browser. Hasil dari kegiatan ini adalah antarmuka dashboard yang interaktif, informatif, dan memudahkan tim HR dalam mengelola data karyawan dengan efisien.'
 
 **FORMAT RESPONSE (JSON):**
 {
-    \"judul\": \"Judul Kegiatan yang Spesifik dan Relevan\",
-    \"keterangan\": \"Deskripsi detail yang semi formal, terstruktur, dan informatif sesuai konteks.\"
+    \"judul\": \"Judul Kegiatan yang Telah Diperbaiki, Dikonsistenkan, dan Diprofesionalkan (5-10 kata, detail dan deskriptif)\",
+    \"keterangan\": \"Deskripsi lengkap dan komprehensif yang menjelaskan kegiatan secara mendetail dengan bahasa formal dan profesional (3-5 kalimat yang informatif, TIDAK SINGKAT).\"
 }
 
-**CATATAN:**
-- Fokus pada KONTEKS kegiatan yang sebenarnya
-- Buat judul yang SPESIFIK dan RELEVAN
-- Deskripsi harus menjelaskan kegiatan yang SEBENARNYA dilakukan
-- Gunakan bahasa yang profesional dan akademis
-- Setiap response HARUS BERBEDA dan UNIK";
+**CATATAN PENTING:**
+- Fokus pada PERBAIKAN dan PENYEMPURNAAN judul yang diberikan user
+- Buat judul yang PROFESIONAL dan mudah dipahami
+- Deskripsi harus LENGKAP, DETAIL, dan menjelaskan kegiatan secara komprehensif
+- Gunakan bahasa yang profesional, formal, dan akademis
+- JANGAN membuat deskripsi yang singkat, buat yang DETAIL dan INFORMATIF
+- Pastikan tata bahasa Indonesia yang sempurna sesuai EYD dan KBBI";
 
-        $finalPrompt = $systemPrompt . "\n\n**DESKRIPSI KEGIATAN YANG DIBERIKAN:**\n" . $prompt . "\n\n**TUGAS ANDA:**\nBuat judul yang KREATIF dan SPESIFIK menggunakan kata-kata teknis yang menarik. HINDARI kata generik seperti 'Perancangan', 'Implementasi', 'Pengembangan'. Gunakan kata seperti 'Pembuatan', 'Coding', 'Building', 'Programming'. Buat deskripsi yang menjelaskan proses teknis yang sebenarnya dilakukan. Response HARUS UNIK dan berbeda dari sebelumnya.";
-        
-        // Log prompt untuk debugging
-        Log::info('Gemini prompt built', [
-            'random_seed' => $randomSeed,
-            'timestamp' => $timestamp,
-            'prompt_length' => strlen($finalPrompt),
-            'user_prompt' => $prompt
-        ]);
-        
+        $finalPrompt = $systemPrompt . "\n\n**JUDUL KEGIATAN YANG DIBERIKAN USER (PERLU DIPERBAIKI):**\n" . $prompt . "\n\n**TUGAS ANDA:**\n1. Perbaiki tata bahasa, ejaan, dan kapitalisasi judul yang diberikan\n2. Konsistenkan format penulisan agar profesional (5-10 kata, detail dan deskriptif)\n3. Buat keterangan yang LENGKAP dan DETAIL (3-5 kalimat) yang menjelaskan kegiatan secara komprehensif\n4. Gunakan bahasa Indonesia yang formal, profesional, dan sesuai EYD\n5. Pastikan judul dan keterangan saling berkaitan dan kontekstual";
+
         return $finalPrompt;
     }
 
@@ -328,5 +332,83 @@ Deskripsi: 'Membangun antarmuka dashboard utama untuk aplikasi Human Resource In
         }
         
         return $results;
+    }
+
+    /**
+     * Get chat response (simple text response for chatbot)
+     */
+    public function getChatResponse($prompt)
+    {
+        if (!$this->apiKey) {
+            Log::warning('Gemini API key tidak ditemukan');
+            return null;
+        }
+
+        try {
+            $url = "{$this->baseUrl}/models/{$this->model}:generateContent?key={$this->apiKey}";
+
+            $payload = [
+                'contents' => [
+                    [
+                        'parts' => [
+                            [
+                                'text' => $prompt
+                            ]
+                        ]
+                    ]
+                ],
+                'generationConfig' => [
+                    'temperature' => 0.9, // Lebih creative untuk chatbot
+                    'topK' => 40,
+                    'topP' => 0.95,
+                    'maxOutputTokens' => 2048,
+                ],
+                'safetySettings' => [
+                    [
+                        'category' => 'HARM_CATEGORY_HARASSMENT',
+                        'threshold' => 'BLOCK_NONE'
+                    ],
+                    [
+                        'category' => 'HARM_CATEGORY_HATE_SPEECH',
+                        'threshold' => 'BLOCK_NONE'
+                    ],
+                    [
+                        'category' => 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
+                        'threshold' => 'BLOCK_NONE'
+                    ],
+                    [
+                        'category' => 'HARM_CATEGORY_DANGEROUS_CONTENT',
+                        'threshold' => 'BLOCK_NONE'
+                    ]
+                ]
+            ];
+
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(30)
+            ->withoutVerifying() // Skip SSL verification for development
+            ->post($url, $payload);
+
+            if ($response->successful()) {
+                $data = $response->json();
+
+                // Extract text response
+                if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
+                    return trim($data['candidates'][0]['content']['parts'][0]['text']);
+                }
+            }
+
+            Log::error('Gemini chat response error', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Gemini chat error: ' . $e->getMessage());
+            return null;
+        }
     }
 }

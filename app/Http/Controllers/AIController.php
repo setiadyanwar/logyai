@@ -12,30 +12,34 @@ class AIController extends Controller
     public function generateSuggestion(Request $request)
     {
         try {
-                    // Check if this is a prompt-based request
-        if ($request->has('prompt')) {
-            return $this->handlePromptRequest($request);
-        }
+            // Check if this is a prompt-based request FIRST
+            if ($request->has('prompt')) {
+                Log::info('Handling prompt-based request');
+                return $this->handlePromptRequest($request);
+            }
 
-        $request->validate([
-            'jenis_kegiatan' => 'required|string',
-            'tipe_penyelenggaraan' => 'nullable|string|in:hybrid,offline,online',
-            'lokasi' => 'nullable|string',
-            'waktu_mulai' => 'nullable|string',
-            'waktu_selesai' => 'nullable|string',
-            'dosen_penggerak' => 'nullable|string',
-            'judul' => 'nullable|string',
-            'keterangan' => 'nullable|string',
-        ]);
+            // If not prompt-based, validate required fields for form-based request
+            $request->validate([
+                'jenis_kegiatan' => 'required|string',
+                'tipe_penyelenggaraan' => 'nullable|string|in:hybrid,offline,online',
+                'lokasi' => 'nullable|string',
+                'waktu_mulai' => 'nullable|string',
+                'waktu_selesai' => 'nullable|string',
+                'dosen_penggerak' => 'nullable|string',
+                'judul' => 'nullable|string',
+                'keterangan' => 'nullable|string',
+            ]);
 
-                    $jenisKegiatan = $request->jenis_kegiatan;
-        $tipe = $request->tipe_penyelenggaraan ?: 'offline';
-        $lokasi = $request->lokasi;
-        $waktuMulai = $request->waktu_mulai;
-        $waktuSelesai = $request->waktu_selesai;
-        $dosenPenggerak = $request->dosen_penggerak;
-        $judulExisting = $request->judul;
-        $keteranganExisting = $request->keterangan;
+            Log::info('Handling form-based request');
+            
+            $jenisKegiatan = $request->jenis_kegiatan;
+            $tipe = $request->tipe_penyelenggaraan ?: 'offline';
+            $lokasi = $request->lokasi;
+            $waktuMulai = $request->waktu_mulai;
+            $waktuSelesai = $request->waktu_selesai;
+            $dosenPenggerak = $request->dosen_penggerak;
+            $judulExisting = $request->judul;
+            $keteranganExisting = $request->keterangan;
 
         // Buat konteks untuk AI berdasarkan form portal IPB
         $konteks = $this->buildKonteks($jenisKegiatan, $tipe, $lokasi, $waktuMulai, $waktuSelesai, $dosenPenggerak, $judulExisting, $keteranganExisting);
@@ -209,7 +213,22 @@ Pastikan response selalu dalam format JSON yang valid.";
     {
         // Bersihkan judul
         $title = trim($title);
-        
+
+        // Ganti kata-kata yang terlalu umum/kasual
+        $replacements = [
+            '/^mengerjakan\s+/i' => 'Pengembangan ',
+            '/^membuat\s+/i' => 'Pembuatan ',
+            '/^fixing\s+/i' => 'Perbaikan ',
+            '/^fix\s+/i' => 'Perbaikan ',
+            '/^update\s+/i' => 'Update ',
+            '/^deployment\s+/i' => 'Deployment ',
+            '/^deploy\s+/i' => 'Deployment ',
+        ];
+
+        foreach ($replacements as $pattern => $replacement) {
+            $title = preg_replace($pattern, $replacement, $title);
+        }
+
         // Dictionary untuk perbaikan kata-kata umum
         $improvements = [
             // General terms
@@ -217,6 +236,7 @@ Pastikan response selalu dalam format JSON yang valid.";
             'diskusi' => 'Diskusi',
             'presentasi' => 'Presentasi',
             'project' => 'Proyek',
+            'proyek' => 'Proyek',
             'client' => 'Klien',
             'tim' => 'Tim',
             'team' => 'Tim',
@@ -303,6 +323,36 @@ Pastikan response selalu dalam format JSON yang valid.";
             'cbd' => 'CBD',
             'employee' => 'Karyawan',
             'karyawan' => 'Karyawan',
+            'sistem' => 'Sistem',
+            'system' => 'Sistem',
+            'management' => 'Management',
+            'manajemen' => 'Manajemen',
+            'tampilan' => 'Tampilan',
+            'utama' => 'Utama',
+            'dashboard' => 'Dashboard',
+            'halaman' => 'Halaman',
+            'fitur' => 'Fitur',
+            'feature' => 'Fitur',
+        ];
+
+        // Perbaiki singkatan yang harus uppercase
+        $uppercaseAbbr = [
+            'hris' => 'HRIS',
+            'api' => 'API',
+            'ui' => 'UI',
+            'ux' => 'UX',
+            'fe' => 'Frontend',
+            'be' => 'Backend',
+            'db' => 'Database',
+            'crud' => 'CRUD',
+            'rest' => 'REST',
+            'json' => 'JSON',
+            'xml' => 'XML',
+            'html' => 'HTML',
+            'css' => 'CSS',
+            'js' => 'JavaScript',
+            'ts' => 'TypeScript',
+            'sql' => 'SQL',
         ];
 
         // Perbaiki kata-kata
@@ -310,8 +360,13 @@ Pastikan response selalu dalam format JSON yang valid.";
             $title = preg_replace('/\b' . preg_quote($wrong, '/') . '\b/i', $correct, $title);
         }
 
-        // Kapitalisasi yang benar
-        $title = ucfirst($title);
+        // Perbaiki singkatan
+        foreach ($uppercaseAbbr as $wrong => $correct) {
+            $title = preg_replace('/\b' . preg_quote($wrong, '/') . '\b/i', $correct, $title);
+        }
+
+        // Kapitalisasi setiap kata penting (Title Case)
+        $title = ucwords(strtolower($title));
         
         // Perbaiki preposisi
         $title = preg_replace('/\b(dengan|di|ke|dari|untuk|oleh|pada|dalam|atas|bawah|sebelum|sesudah|selama|setelah|sebelumnya|selanjutnya)\b/i', strtolower('$1'), $title);
@@ -540,13 +595,13 @@ Pastikan response selalu dalam format JSON yang valid.";
     private function handlePromptRequest(Request $request)
     {
         $request->validate([
-            'prompt' => 'required|string|min:10',
+            'prompt' => 'required|string|min:3',
             'jenis_kegiatan' => 'nullable|string',
             'dosen_penggerak' => 'nullable|string',
             'lokasi' => 'nullable|string',
         ]);
 
-        $prompt = $request->prompt;
+        $prompt = trim($request->prompt);
         $jenisKegiatan = $request->jenis_kegiatan ?: 'praktik';
         $dosenPenggerak = $request->dosen_penggerak ?: 'Dr. Ir. Suprihatin, M.Si';
         $lokasi = $request->lokasi ?: 'Graha Telkomsigma II, Tangerang Selatan';
@@ -884,20 +939,694 @@ Berikan output dalam bahasa Indonesia yang profesional dan teknis. Pastikan JSON
     }
 
     /**
+     * Auto-generate dari judul saja (Smart Auto-Fill)
+     * Endpoint khusus untuk auto-fill semua field ketika user mengetik judul
+     */
+    public function autoFillFromTitle(Request $request)
+    {
+        try {
+            $request->validate([
+                'judul' => 'required|string|min:3',
+            ]);
+
+            $judul = $request->judul;
+
+            Log::info('Auto-fill from title request', [
+                'judul' => $judul
+            ]);
+
+            // Build comprehensive prompt for AI to generate all fields
+            $prompt = "Kamu adalah asisten AI untuk logbook magang mahasiswa IPB di Telkomsigma (frontend developer).
+
+INPUT DARI USER:
+Judul: \"{$judul}\"
+
+TUGASMU:
+1. Perbaiki dan sempurnakan judul menjadi lebih profesional, rapi, dan konsisten
+2. Generate deskripsi detail berdasarkan judul (minimal 100 kata)
+3. Tentukan jenis kegiatan yang sesuai
+4. Tentukan tipe penyelenggaraan yang sesuai
+5. Set tanggal ke hari ini
+6. Set waktu default magang (08:30 - 17:30)
+7. Set dosen penggerak default
+8. Set lokasi default
+
+ATURAN PENTING:
+- Analisis judul untuk menentukan jenis kegiatan yang tepat:
+  * Jika tentang coding/development/implementasi/fix bug → 'Berita Acara Kegiatan'
+  * Jika tentang konsultasi/mentoring/bimbingan → 'Berita Acara Pembimbingan (Konsultasi/Mentoring/Coaching)'
+  * Jika tentang ujian/evaluasi/presentasi hasil → 'Berita Acara Ujian'
+
+- Untuk tipe_penyelenggaraan:
+  * Jika disebutkan 'online' atau 'remote' → 'online'
+  * Jika disebutkan 'offline' atau 'kantor' → 'offline'
+  * Default → 'offline'
+
+- Judul harus KONSISTEN dengan pola berikut:
+
+  * POLA KONSISTEN yang HARUS diikuti:
+    1. Untuk aktivitas development/coding: \"Pengembangan [Fitur/Component] [Nama Sistem]\"
+    2. Untuk perbaikan bug: \"Perbaikan Bug [Deskripsi Bug] pada [Sistem]\"
+    3. Untuk integrasi: \"Integrasi [Teknologi/API] pada [Sistem]\"
+    4. Untuk testing: \"Testing dan Quality Assurance [Nama Fitur]\"
+    5. Untuk deployment: \"Deployment [Frontend/Backend/Fullstack] ke [Environment]\"
+    6. Untuk meeting: \"Meeting [Topik] dengan [Tim/Stakeholder]\"
+
+  * ATURAN KONSISTENSI:
+    - Selalu gunakan kata benda di awal (Pengembangan, Perbaikan, Integrasi, Testing, Deployment)
+    - JANGAN gunakan kata kerja aktif (mengerjakan, membuat, melakukan)
+    - Kapitalisasi yang benar: setiap kata penting huruf besar
+    - Singkatan uppercase: HRIS, API, UI, UX, REST, JSON, dll
+    - Format: [Kata Benda] [Object] [Detail/Konteks]
+
+  * CONTOH TRANSFORMASI:
+    ❌ 'mengerjakan sistem management karyawan (HRIS) membuat tampilan utama'
+    ✅ 'Pengembangan Dashboard Utama Sistem HRIS'
+
+    ❌ 'fix bug api untuk data aplikasi'
+    ✅ 'Perbaikan Bug API Data Aplikasi pada Application Hub'
+
+    ❌ 'deployment fe dan be'
+    ✅ 'Deployment Frontend dan Backend ke Production Server'
+
+    ❌ 'membuat fitur login dengan google'
+    ✅ 'Pengembangan Fitur Login dengan Google OAuth'
+
+    ❌ 'ngerjain integrasi api payment'
+    ✅ 'Integrasi API Payment Gateway pada Sistem Transaksi'
+
+- Deskripsi harus KONSISTEN dengan struktur:
+
+  * STRUKTUR KONSISTEN yang HARUS diikuti:
+    Paragraf 1 (What): Menjelaskan aktivitas apa yang dilakukan
+    Paragraf 2 (How): Teknologi/tools yang digunakan dan cara implementasi
+    Paragraf 3 (Result/Why): Hasil yang dicapai dan impact/learning
+
+  * POLA KALIMAT KONSISTEN:
+    - Gunakan \"Melakukan [aktivitas]\" untuk pembuka
+    - Gunakan \"Menggunakan [teknologi]\" untuk tools
+    - Gunakan \"Hasil yang dicapai\" atau \"Melalui aktivitas ini\" untuk penutup
+    - HINDARI kalimat yang terlalu personal seperti \"Saya sangat senang\", \"Hari ini menyenangkan\"
+    - Fokus pada aspek teknis dan profesional
+
+  * CONTOH DESKRIPSI KONSISTEN:
+    \"Melakukan pengembangan dashboard utama untuk sistem HRIS menggunakan Nuxt.js dan PrimeVue. Dashboard dirancang untuk menampilkan summary data karyawan, grafik kehadiran, dan quick actions untuk HR team.
+
+    Menggunakan PrimeVue components seperti DataTable, Chart, dan Card untuk membuat tampilan yang informatif dan responsif. Implementasi state management dengan Pinia untuk handle data real-time dari API backend. Styling menggunakan Tailwind CSS dengan design system yang konsisten.
+
+    Hasil yang dicapai adalah dashboard yang user-friendly dan informatif, memudahkan HR team dalam monitoring data karyawan. Melalui aktivitas ini, saya memperdalam pemahaman tentang component-based architecture dan state management dalam aplikasi enterprise.\"
+
+FORMAT OUTPUT JSON:
+{
+  \"judul\": \"Judul yang diperbaiki\",
+  \"keterangan\": \"Deskripsi detail kegiatan\",
+  \"jenis_kegiatan\": \"Berita Acara Kegiatan|Berita Acara Pembimbingan (Konsultasi/Mentoring/Coaching)|Berita Acara Ujian\",
+  \"tipe_penyelenggaraan\": \"offline|online|hybrid\",
+  \"lokasi\": \"Graha Telkomsigma II, Tangerang Selatan\",
+  \"tanggal\": \"" . date('Y-m-d') . "\",
+  \"waktu_mulai\": \"08:30\",
+  \"waktu_selesai\": \"17:30\",
+  \"dosen_penggerak\": \"Amata Fami, M.Ds. - 201807198507182001\"
+}
+
+CONTOH INPUT-OUTPUT:
+
+Contoh 1:
+Input: 'mengerjakan sistem management karyawan (HRIS) membuat tampilan utama'
+Output:
+{
+  \"judul\": \"Pengembangan Dashboard Utama Sistem HRIS\",
+  \"keterangan\": \"Melakukan pengembangan dashboard utama untuk sistem HRIS (Human Resource Information System) sebagai halaman landing setelah login. Dashboard dirancang untuk menampilkan ringkasan data karyawan, grafik kehadiran bulanan, dan quick actions untuk fungsi-fungsi HR yang sering digunakan.\\n\\nMenggunakan Nuxt.js sebagai framework utama dengan PrimeVue untuk UI components seperti DataTable, Chart, dan Card. Implementasi state management menggunakan Pinia untuk mengelola data real-time dari API backend. Styling dikembangkan dengan Tailwind CSS mengikuti design system perusahaan yang sudah ada, memastikan konsistensi visual di seluruh aplikasi.\\n\\nHasil yang dicapai adalah dashboard yang responsif, informatif, dan user-friendly. HR team dapat dengan mudah melihat overview data karyawan dan melakukan aksi cepat tanpa navigasi yang rumit. Melalui aktivitas ini, saya memperdalam pemahaman tentang component-based architecture, state management, dan best practices dalam pengembangan aplikasi enterprise.\",
+  \"jenis_kegiatan\": \"Berita Acara Kegiatan\",
+  \"tipe_penyelenggaraan\": \"offline\",
+  \"lokasi\": \"Graha Telkomsigma II, Tangerang Selatan\",
+  \"tanggal\": \"" . date('Y-m-d') . "\",
+  \"waktu_mulai\": \"08:30\",
+  \"waktu_selesai\": \"17:30\",
+  \"dosen_penggerak\": \"Amata Fami, M.Ds. - 201807198507182001\"
+}
+
+Contoh 2:
+Input: 'fix bug api untuk mengambil data aplikasi'
+Output:
+{
+  \"judul\": \"Perbaikan Bug API Data Aplikasi pada Application Hub\",
+  \"keterangan\": \"Melakukan debugging dan perbaikan bug pada API endpoint /api/applications yang digunakan untuk mengambil daftar aplikasi di Application Hub. Issue yang ditemukan adalah response API tidak konsisten, terkadang mengembalikan data null, dan sering terjadi timeout ketika data aplikasi lebih dari 50 items.\\n\\nMenggunakan Laravel Debugbar dan Postman untuk analisis performa API. Solusi yang diimplementasikan mencakup optimasi query database dengan eager loading untuk relasi, penambahan Redis caching untuk data yang jarang berubah, dan implementasi pagination untuk mengurangi beban query. Error handling diperbaiki dengan proper HTTP status codes dan informative error messages.\\n\\nHasil yang dicapai adalah API response time berkurang drastis dari rata-rata 3 detik menjadi 500ms, dan data yang dikembalikan sudah konsisten. Melalui aktivitas ini, saya memahami pentingnya database optimization, caching strategy, dan proper error handling dalam pengembangan API yang scalable.\",
+  \"jenis_kegiatan\": \"Berita Acara Kegiatan\",
+  \"tipe_penyelenggaraan\": \"offline\",
+  \"lokasi\": \"Graha Telkomsigma II, Tangerang Selatan\",
+  \"tanggal\": \"" . date('Y-m-d') . "\",
+  \"waktu_mulai\": \"08:30\",
+  \"waktu_selesai\": \"17:30\",
+  \"dosen_penggerak\": \"Amata Fami, M.Ds. - 201807198507182001\"
+}
+
+Contoh 3:
+Input: 'deployment FE dan BE ke production'
+Output:
+{
+  \"judul\": \"Deployment Frontend dan Backend ke Production Server\",
+  \"keterangan\": \"Melakukan deployment aplikasi sistem HRIS (frontend Nuxt.js dan backend Laravel) ke production server untuk fase UAT (User Acceptance Testing). Deployment mencakup persiapan environment production, build optimization, database migration, dan konfigurasi server Nginx untuk reverse proxy.\\n\\nMenggunakan CI/CD pipeline dengan GitHub Actions untuk automated deployment. Frontend di-build dengan mode production (npm run build) dengan optimasi bundle size dan lazy loading untuk performa optimal. Backend di-deploy menggunakan Laravel Forge dengan automated database migration dan cache warming. Environment variables dikonfigurasi sesuai production requirements, dan SSL certificate dipasang untuk HTTPS.\\n\\nHasil yang dicapai adalah aplikasi berhasil live di production server dengan performa yang optimal dan zero downtime. Monitoring dilakukan menggunakan Laravel Telescope dan Google Analytics untuk track error dan usage. Melalui aktivitas ini, saya memahami deployment workflow, CI/CD best practices, dan pentingnya monitoring dalam production environment.\",
+  \"jenis_kegiatan\": \"Berita Acara Kegiatan\",
+  \"tipe_penyelenggaraan\": \"offline\",
+  \"lokasi\": \"Graha Telkomsigma II, Tangerang Selatan\",
+  \"tanggal\": \"" . date('Y-m-d') . "\",
+  \"waktu_mulai\": \"08:30\",
+  \"waktu_selesai\": \"17:30\",
+  \"dosen_penggerak\": \"Amata Fami, M.Ds. - 201807198507182001\"
+}
+
+Pastikan response HANYA berisi JSON yang valid, tanpa markdown atau format lain.";
+
+            // Call AI service
+            $result = $this->callAIServiceForAutoFill($prompt);
+
+            if ($result) {
+                Log::info('Auto-fill successful', ['result' => $result]);
+                return response()->json([
+                    'success' => true,
+                    'data' => $result,
+                    'message' => 'Auto-fill berhasil! Semua field telah diisi otomatis.'
+                ]);
+            }
+
+            // Fallback jika AI gagal
+            $fallback = $this->getFallbackAutoFill($judul);
+
+            return response()->json([
+                'success' => true,
+                'data' => $fallback,
+                'message' => 'Auto-fill berhasil (fallback mode)'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Auto-fill Error: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal melakukan auto-fill. Silakan coba lagi.'
+            ], 500);
+        }
+    }
+
+    private function callAIServiceForAutoFill($prompt)
+    {
+        try {
+            $geminiService = new GeminiService();
+
+            // Generate content menggunakan Gemini
+            $result = $geminiService->generateContent($prompt, [
+                'auto_fill' => true,
+                'complete_data' => true
+            ]);
+
+            if ($result) {
+                Log::info('Gemini API auto-fill successful', ['result' => $result]);
+                return $result;
+            }
+
+            Log::warning('Gemini API auto-fill failed, using fallback');
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('Error in callAIServiceForAutoFill: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    private function getFallbackAutoFill($judul)
+    {
+        // Intelligent fallback based on keywords in title
+        $judulLower = strtolower($judul);
+
+        // Determine jenis_kegiatan
+        $jenisKegiatan = 'Berita Acara Kegiatan';
+        if (str_contains($judulLower, 'konsultasi') || str_contains($judulLower, 'mentoring') || str_contains($judulLower, 'bimbingan')) {
+            $jenisKegiatan = 'Berita Acara Pembimbingan (Konsultasi/Mentoring/Coaching)';
+        } elseif (str_contains($judulLower, 'ujian') || str_contains($judulLower, 'evaluasi') || str_contains($judulLower, 'presentasi hasil')) {
+            $jenisKegiatan = 'Berita Acara Ujian';
+        }
+
+        // Determine tipe_penyelenggaraan
+        $tipe = 'offline';
+        if (str_contains($judulLower, 'online') || str_contains($judulLower, 'remote')) {
+            $tipe = 'online';
+        } elseif (str_contains($judulLower, 'hybrid')) {
+            $tipe = 'hybrid';
+        }
+
+        // Clean and improve title
+        $improvedJudul = $this->improveTitle($judul, 'Graha Telkomsigma II, Tangerang Selatan', $jenisKegiatan);
+
+        // Generate contextual description
+        $keterangan = $this->generateContextualDescription($improvedJudul, $jenisKegiatan, 'Graha Telkomsigma II, Tangerang Selatan');
+
+        return [
+            'judul' => $improvedJudul,
+            'keterangan' => $keterangan,
+            'jenis_kegiatan' => $jenisKegiatan,
+            'tipe_penyelenggaraan' => $tipe,
+            'lokasi' => 'Graha Telkomsigma II, Tangerang Selatan',
+            'tanggal' => date('Y-m-d'),
+            'waktu_mulai' => '08:30',
+            'waktu_selesai' => '17:30',
+            'dosen_penggerak' => 'Amata Fami, M.Ds. - 201807198507182001'
+        ];
+    }
+
+    /**
+     * Chatbot endpoint - untuk tanya jawab tentang logbook
+     */
+    public function chatbot(Request $request)
+    {
+        try {
+            $request->validate([
+                'message' => 'required|string|min:1',
+                'history' => 'sometimes|array', // Optional chat history
+            ]);
+
+            $userMessage = $request->message;
+            $history = $request->history ?? [];
+
+            Log::info('Chatbot request', [
+                'message' => $userMessage,
+                'history_count' => count($history)
+            ]);
+
+            // Build context-aware prompt
+            $prompt = $this->buildChatbotPrompt($userMessage, $history);
+
+            // Call Gemini API
+            $geminiService = new GeminiService();
+
+            // For chatbot, we use a different approach - just get text response
+            $response = $geminiService->getChatResponse($prompt);
+
+            if ($response) {
+                return response()->json([
+                    'success' => true,
+                    'message' => $response,
+                ]);
+            }
+
+            // Fallback ke chatbot rule-based jika API gagal (quota exceeded, dll)
+            Log::warning('Gemini API failed, using fallback chatbot');
+            $fallbackResponse = $this->getFallbackChatResponse($userMessage);
+
+            return response()->json([
+                'success' => true,
+                'message' => $fallbackResponse,
+                'fallback' => true
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Chatbot Error: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan. Silakan coba lagi.'
+            ], 500);
+        }
+    }
+
+    /**
+     * Build chatbot prompt dengan context
+     */
+    private function buildChatbotPrompt($userMessage, $history = [])
+    {
+        // Build conversation history
+        $conversationHistory = "";
+        if (!empty($history)) {
+            foreach ($history as $msg) {
+                $role = $msg['role'] ?? 'user';
+                $content = $msg['content'] ?? '';
+
+                if ($role === 'user') {
+                    $conversationHistory .= "User: {$content}\n";
+                } else {
+                    $conversationHistory .= "Assistant: {$content}\n";
+                }
+            }
+        }
+
+        $prompt = "Kamu adalah LogyAI Assistant - asisten AI yang membantu mahasiswa IPB dalam mengisi logbook magang di Telkomsigma.
+
+KONTEKS:
+- Pengguna adalah mahasiswa magang IPB di Telkomsigma sebagai Frontend Developer
+- Mereka menggunakan website Logyai untuk mencatat aktivitas harian logbook
+- Logbook akan diekspor otomatis ke portal IPB
+
+KEMAMPUAN KAMU:
+1. Menjawab pertanyaan tentang cara mengisi logbook
+2. Memberikan saran judul dan deskripsi kegiatan yang baik
+3. Membantu troubleshooting masalah di website
+4. Memberikan tips menulis logbook yang profesional
+5. Menjawab tentang fitur-fitur Logyai
+
+FITUR LOGYAI:
+- Input log dengan form lengkap (tanggal, waktu, judul, deskripsi, bukti foto)
+- AI Saran: klik tombol untuk auto-generate judul & deskripsi
+- Upload bukti: dari device, kamera, atau Google Drive (otomatis watermark)
+- Ekspor otomatis ke portal IPB
+- Dark mode
+- PWA (bisa di-install sebagai app)
+
+FIELD LOGBOOK:
+- Tanggal: format YYYY-MM-DD
+- Waktu: mulai & selesai (format HH:MM)
+- Jenis Kegiatan: Berita Acara Kegiatan / Pembimbingan / Ujian
+- Dosen Penggerak: default \"Amata Fami, M.Ds.\"
+- Tipe: offline / online / hybrid
+- Lokasi: default \"Graha Telkomsigma II, Tangerang Selatan\"
+- Judul: singkat, profesional (maks 80 karakter)
+- Deskripsi: detail (min 100 kata)
+- Bukti: foto aktivitas dengan watermark
+
+CARA PAKAI AI SARAN:
+1. Isi judul kegiatan (minimal)
+2. Klik tombol \"AI Saran\" (ikon robot)
+3. AI akan otomatis:
+   - Memperbaiki judul (kapitalisasi, gaya bahasa konsisten)
+   - Generate deskripsi detail (3 paragraf)
+   - Auto-fill semua field lain
+
+POLA JUDUL KONSISTEN:
+- Development: \"Pengembangan [Fitur] [Sistem]\"
+- Bug fix: \"Perbaikan Bug [Deskripsi] pada [Sistem]\"
+- Integration: \"Integrasi [Teknologi] pada [Sistem]\"
+- Testing: \"Testing dan Quality Assurance [Fitur]\"
+- Deployment: \"Deployment [FE/BE] ke [Environment]\"
+- Meeting: \"Meeting [Topik] dengan [Tim]\"
+
+STRUKTUR DESKRIPSI:
+Paragraf 1 (What): Melakukan [aktivitas]...
+Paragraf 2 (How): Menggunakan [teknologi/tools]...
+Paragraf 3 (Result): Hasil yang dicapai...
+
+ATURAN JAWABAN:
+- Jawab dengan ramah dan helpful
+- Berikan contoh konkret jika diminta
+- Jika ditanya cara, berikan step-by-step
+- Jika tidak tahu, akui dan arahkan ke dokumentasi
+- Gunakan bahasa Indonesia yang natural
+- Jangan terlalu panjang, to the point
+
+HISTORY PERCAKAPAN SEBELUMNYA:
+{$conversationHistory}
+
+PERTANYAAN USER SAAT INI:
+{$userMessage}
+
+Jawab pertanyaan user dengan helpful dan to the point. Jika user minta contoh, berikan contoh yang spesifik dan relevan.";
+
+        return $prompt;
+    }
+
+    /**
+     * Fallback chatbot response (rule-based & dynamic) jika API gagal
+     */
+    private function getFallbackChatResponse($userMessage)
+    {
+        $messageLower = strtolower($userMessage);
+
+        // Try OpenAI as fallback for general questions
+        $openAIResponse = $this->tryOpenAIFallback($userMessage);
+        if ($openAIResponse) {
+            return $openAIResponse;
+        }
+
+        // Simple math calculations
+        $mathResult = $this->trySimpleMath($userMessage);
+        if ($mathResult !== null) {
+            return $mathResult;
+        }
+
+        // Simple knowledge base
+        $knowledgeResult = $this->trySimpleKnowledge($userMessage);
+        if ($knowledgeResult !== null) {
+            return $knowledgeResult;
+        }
+
+        // Greeting
+        if (str_contains($messageLower, 'hai') ||
+            str_contains($messageLower, 'halo') ||
+            str_contains($messageLower, 'hi') ||
+            str_contains($messageLower, 'hello') ||
+            str_contains($messageLower, 'hey') ||
+            str_contains($messageLower, 'haii') ||
+            str_contains($messageLower, 'haiii')) {
+            return "Hai! 👋 Saya LogyAI Assistant. Saya siap membantu Anda dengan:\n\n• Cara mengisi logbook yang baik\n• Contoh judul dan deskripsi profesional\n• Panduan fitur Logyai\n• Tips menulis logbook magang\n\nAda yang bisa saya bantu?";
+        }
+
+        // Cara pakai AI Saran
+        if (str_contains($messageLower, 'cara') && (str_contains($messageLower, 'ai') || str_contains($messageLower, 'saran'))) {
+            return "**Cara Pakai AI Saran:**\n\n1. Isi **judul kegiatan** (misal: \"fix bug api data aplikasi\")\n2. Klik tombol **AI Saran** (ikon robot 🤖)\n3. AI akan otomatis:\n   • Memperbaiki judul jadi profesional\n   • Generate deskripsi detail 3 paragraf\n   • Auto-fill semua field lainnya\n4. Review hasilnya dan edit jika perlu\n5. Klik **Simpan Log**\n\nTips: Semakin detail judul Anda, semakin akurat hasil AI!";
+        }
+
+        // Contoh judul
+        if (str_contains($messageLower, 'contoh') && str_contains($messageLower, 'judul')) {
+            return "**Contoh Judul Logbook yang Baik:**\n\n✅ Development:\n• \"Pengembangan Dashboard HRIS dengan Nuxt.js\"\n• \"Pembuatan Komponen Login OAuth Google\"\n\n✅ Bug Fixing:\n• \"Perbaikan Bug API Data Aplikasi\"\n• \"Debugging Error Timeout pada Payment Gateway\"\n\n✅ Integration:\n• \"Integrasi REST API pada Application Hub\"\n• \"Implementasi Google Drive Picker\"\n\n✅ Testing:\n• \"Testing dan QA Fitur Dashboard Admin\"\n\n✅ Deployment:\n• \"Deployment Frontend ke Production Server\"\n\n**Pola:** [Kata Benda] [Object] [Detail/Konteks]";
+        }
+
+        // Fitur Logyai
+        if (str_contains($messageLower, 'fitur') || str_contains($messageLower, 'apa saja')) {
+            return "**Fitur Logyai:**\n\n🤖 **AI Saran**\n• Auto-generate judul & deskripsi profesional\n• Perbaikan otomatis kapitalisasi & format\n\n📸 **Upload Bukti**\n• Dari device, kamera, atau Google Drive\n• Auto watermark (tanggal, waktu, lokasi)\n\n📤 **Ekspor Otomatis**\n• Export ke portal IPB format Word\n• Auto-fill semua field sesuai format kampus\n\n🌙 **Dark Mode**\n• Toggle dark/light theme\n\n📱 **PWA (Progressive Web App)**\n• Install sebagai aplikasi native\n• Bisa digunakan offline";
+        }
+
+        // Jenis kegiatan
+        if (str_contains($messageLower, 'jenis kegiatan')) {
+            return "**Jenis Kegiatan yang tersedia:**\n\n1. **Berita Acara Kegiatan**\n   → Untuk: coding, development, meeting tim, workshop\n\n2. **Berita Acara Pembimbingan**\n   → Untuk: konsultasi dosen, mentoring, coaching\n\n3. **Berita Acara Ujian**\n   → Untuk: evaluasi, presentasi hasil, ujian progress\n\nTips: AI Saran otomatis menentukan jenis kegiatan yang sesuai berdasarkan judul Anda!";
+        }
+
+        // Tips menulis
+        if (str_contains($messageLower, 'tips') || str_contains($messageLower, 'bagaimana menulis')) {
+            return "**Tips Menulis Logbook yang Baik:**\n\n📝 **Judul:**\n• Singkat tapi spesifik (maks 80 karakter)\n• Gunakan kata benda (Pengembangan, Perbaikan, Integrasi)\n• Hindari kata kerja aktif (mengerjakan, membuat)\n• Singkatan uppercase (HRIS, API, UI)\n\n📄 **Deskripsi:**\n• Min 100 kata, 3 paragraf\n• Paragraf 1 (What): Apa yang dilakukan\n• Paragraf 2 (How): Teknologi & cara implementasi\n• Paragraf 3 (Result): Hasil & learning\n• Gunakan bahasa semi formal, profesional\n\n💡 **Pro Tip:** Gunakan AI Saran untuk hasil optimal!";
+        }
+
+        // Deskripsi
+        if (str_contains($messageLower, 'deskripsi') && (str_contains($messageLower, 'bagaimana') || str_contains($messageLower, 'cara'))) {
+            return "**Struktur Deskripsi yang Baik:**\n\n**Paragraf 1 - What (Apa):**\nJelaskan aktivitas apa yang dilakukan. Contoh:\n\"Melakukan pengembangan dashboard utama untuk sistem HRIS...\"\n\n**Paragraf 2 - How (Bagaimana):**\nTeknologi/tools yang digunakan. Contoh:\n\"Menggunakan Nuxt.js dan PrimeVue untuk UI components...\"\n\n**Paragraf 3 - Result/Why (Hasil):**\nHasil yang dicapai dan learning. Contoh:\n\"Hasil yang dicapai adalah dashboard responsif dan user-friendly...\"\n\n💡 **Tip:** Gunakan AI Saran untuk auto-generate deskripsi lengkap!";
+        }
+
+        // Upload bukti
+        if (str_contains($messageLower, 'upload') || str_contains($messageLower, 'bukti') || str_contains($messageLower, 'foto')) {
+            return "**Cara Upload Bukti:**\n\n📱 **3 Opsi Upload:**\n1. **File Picker** - pilih dari galeri/folder\n2. **Kamera** - ambil foto langsung\n3. **Google Drive** - pilih dari Drive folder\n\n✨ **Watermark Otomatis:**\nSemua foto otomatis di-watermark dengan:\n• Tanggal upload\n• Waktu upload\n• Lokasi (GPS)\n• Logo Logyai\n\n📝 **Format:** PNG, JPG, JPEG (maks 5MB)";
+        }
+
+        // Export
+        if (str_contains($messageLower, 'ekspor') || str_contains($messageLower, 'export') || str_contains($messageLower, 'portal')) {
+            return "**Ekspor ke Portal IPB:**\n\n1. Klik tombol **Export** di log yang sudah dibuat\n2. Sistem otomatis:\n   • Format ke Word (.docx)\n   • Sesuaikan dengan template portal IPB\n   • Auto-fill semua field\n   • Include bukti foto dengan watermark\n3. Download file hasil export\n4. Upload ke portal IPB\n\n✅ Format sudah 100% sesuai requirement IPB!";
+        }
+
+        // Google Drive
+        if (str_contains($messageLower, 'google drive') || str_contains($messageLower, 'drive')) {
+            return "**Google Drive Integration:**\n\n🔧 **Setup:**\n1. Pastikan sudah login Google\n2. Klik tombol \"Google Drive\" saat upload\n3. Pilih folder/file dari Drive\n4. Foto otomatis di-watermark\n\n📁 **Folder Default:**\nFolder ID: 1N8i9WzTJVYagwsk5MHdQ5par8k4-FPSb\n\n⚠️ **Jika error:**\n• Check API key sudah di-setup di .env\n• Pastikan browser allow popups\n• Try refresh & login ulang";
+        }
+
+        // Dark mode
+        if (str_contains($messageLower, 'dark') || str_contains($messageLower, 'theme')) {
+            return "**Dark Mode:**\n\n🌙 Klik toggle di header (icon sun/moon)\n🎨 Theme otomatis tersimpan di browser\n💡 Auto-switch sesuai preferensi sistem (optional)\n\nTips: Dark mode hemat baterai dan lebih nyaman untuk mata!";
+        }
+
+        // Error handling
+        if (str_contains($messageLower, 'error') || str_contains($messageLower, 'gagal') || str_contains($messageLower, 'tidak bisa')) {
+            return "**Troubleshooting:**\n\n❌ **AI Saran tidak jalan?**\n• Check koneksi internet\n• Pastikan judul terisi minimal 3 karakter\n• Coba refresh page\n\n❌ **Upload gagal?**\n• Check ukuran file (maks 5MB)\n• Format harus PNG/JPG/JPEG\n• Pastikan ada storage space\n\n❌ **Export error?**\n• Pastikan semua field terisi\n• Check ada bukti foto\n• Coba clear cache browser\n\n💬 Masih ada masalah? Jelaskan error spesifiknya!";
+        }
+
+        // Quota info
+        if (str_contains($messageLower, 'quota') || str_contains($messageLower, 'limit')) {
+            return "**Info Quota API:**\n\n⚠️ Gemini AI free tier memiliki limit:\n• 200 requests/day\n• Reset setiap 24 jam\n\n💡 **Saat quota habis:**\n• Chatbot tetap bisa menjawab (mode fallback)\n• AI Saran pakai fallback (hasil tetap bagus)\n• Tunggu 24 jam untuk reset quota\n\n🎯 **Tips hemat quota:**\n• Gunakan AI Saran hanya saat perlu\n• Review & edit manual jika memungkinkan";
+        }
+
+        // Default - tidak paham
+        return "Hmm, saya kurang paham pertanyaan Anda 🤔\n\nSaya bisa membantu dengan:\n• Cara pakai AI Saran\n• Contoh judul yang baik\n• Tips menulis logbook\n• Cara upload bukti\n• Fitur-fitur Logyai\n• Troubleshooting error\n\nCoba tanya dengan lebih spesifik ya! Contoh:\n\"Bagaimana cara pakai AI Saran?\"";
+    }
+
+    /**
+     * Try simple math calculations
+     */
+    private function trySimpleMath($userMessage)
+    {
+        // Pattern untuk mendeteksi operasi matematika
+        $patterns = [
+            // Format: "1 + 1" atau "berapa 1 + 1"
+            '/(?:berapa\s+)?(\d+(?:\.\d+)?)\s*([+\-*\/x×÷])\s*(\d+(?:\.\d+)?)/i',
+            // Format: "1+1" tanpa spasi
+            '/(\d+(?:\.\d+)?)([+\-*\/x×÷])(\d+(?:\.\d+)?)/i',
+        ];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $userMessage, $matches)) {
+                $num1 = floatval($matches[1]);
+                $operator = $matches[2];
+                $num2 = floatval($matches[3]);
+
+                $result = null;
+                switch ($operator) {
+                    case '+':
+                        $result = $num1 + $num2;
+                        break;
+                    case '-':
+                        $result = $num1 - $num2;
+                        break;
+                    case '*':
+                    case 'x':
+                    case '×':
+                        $result = $num1 * $num2;
+                        break;
+                    case '/':
+                    case '÷':
+                        if ($num2 != 0) {
+                            $result = $num1 / $num2;
+                        } else {
+                            return "Tidak bisa membagi dengan 0! 😅";
+                        }
+                        break;
+                }
+
+                if ($result !== null) {
+                    // Format hasil
+                    $resultFormatted = is_float($result) && floor($result) != $result
+                        ? number_format($result, 2, '.', ',')
+                        : number_format($result, 0, '.', ',');
+
+                    return "**Hasil:** {$num1} {$operator} {$num2} = **{$resultFormatted}** ✨";
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Try simple knowledge base
+     */
+    private function trySimpleKnowledge($userMessage)
+    {
+        $messageLower = strtolower($userMessage);
+
+        // Presiden Indonesia
+        if (str_contains($messageLower, 'presiden') || str_contains($messageLower, 'president')) {
+            if (str_contains($messageLower, 'sekarang') || str_contains($messageLower, 'saat ini') ||
+                str_contains($messageLower, 'indonesia')) {
+                return "**Presiden Indonesia saat ini** (2024) adalah **Prabowo Subianto**.\n\nBeliau dilantik sebagai Presiden RI ke-8 pada tanggal **20 Oktober 2024**, dengan Wakil Presiden **Gibran Rakabuming Raka**.";
+            }
+        }
+
+        // Ibukota Indonesia
+        if (str_contains($messageLower, 'ibukota') && str_contains($messageLower, 'indonesia')) {
+            return "**Ibukota Indonesia** saat ini masih **Jakarta** (DKI Jakarta).\n\nNamun, ibukota baru yang sedang dibangun adalah **Nusantara** (IKN - Ibu Kota Nusantara) yang terletak di Kalimantan Timur, dengan target pemindahan bertahap mulai tahun 2024-2045.";
+        }
+
+        // Tanggal kemerdekaan
+        if ((str_contains($messageLower, 'kapan') || str_contains($messageLower, 'tanggal')) &&
+            (str_contains($messageLower, 'merdeka') || str_contains($messageLower, 'kemerdekaan')) &&
+            str_contains($messageLower, 'indonesia')) {
+            return "Indonesia **merdeka** pada tanggal **17 Agustus 1945**.\n\nProklamasi kemerdekaan dibacakan oleh **Ir. Soekarno** (Presiden pertama) dan **Drs. Mohammad Hatta** (Wakil Presiden pertama).";
+        }
+
+        // Jumlah provinsi
+        if (str_contains($messageLower, 'berapa') && str_contains($messageLower, 'provinsi') &&
+            str_contains($messageLower, 'indonesia')) {
+            return "Indonesia memiliki **38 provinsi** (per 2024).\n\nProvinsi terbaru adalah **Papua Selatan**, **Papua Tengah**, dan **Papua Pegunungan** yang merupakan hasil pemekaran dari Papua.";
+        }
+
+        // IPB (kampus)
+        if (str_contains($messageLower, 'ipb')) {
+            if (str_contains($messageLower, 'apa') || str_contains($messageLower, 'kepanjangan')) {
+                return "**IPB** adalah singkatan dari **Institut Pertanian Bogor**.\n\nIPB adalah perguruan tinggi negeri yang fokus pada bidang pertanian, peternakan, kehutanan, teknologi pangan, dan ilmu terkait lainnya. Kampus utama IPB terletak di Dramaga, Bogor, Jawa Barat.";
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Try OpenAI as fallback for general questions (pengetahuan umum, matematika, dll)
+     */
+    private function tryOpenAIFallback($userMessage)
+    {
+        $apiKey = env('OPENAI_API_KEY');
+
+        if (!$apiKey) {
+            return null;
+        }
+
+        try {
+            $systemPrompt = "Kamu adalah LogyAI Assistant - AI helper yang membantu mahasiswa magang IPB.
+
+KONTEKS:
+- User adalah mahasiswa magang di Telkomsigma sebagai Frontend Developer
+- Mereka pakai website Logyai untuk logbook magang
+
+TUGAS KAMU:
+1. Jawab pertanyaan APAPUN dengan ramah dan helpful
+2. Untuk pertanyaan tentang logbook/Logyai, fokus pada konteks magang IPB
+3. Untuk pertanyaan umum (matematika, pengetahuan umum, coding, dll), jawab dengan akurat
+4. Gunakan bahasa Indonesia yang natural dan friendly
+5. Jika perlu contoh, berikan yang spesifik dan mudah dipahami
+
+ATURAN:
+- Jawab langsung to the point, tidak bertele-tele
+- Gunakan formatting markdown jika membantu (bold, bullet points)
+- Jika tidak tahu pasti, akui saja
+- Hindari jawaban terlalu panjang (max 200 kata)
+
+Jawab pertanyaan user dengan helpful dan akurat!";
+
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
+                'model' => 'gpt-4o-mini',
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => $systemPrompt
+                    ],
+                    [
+                        'role' => 'user',
+                        'content' => $userMessage
+                    ]
+                ],
+                'max_tokens' => 500,
+                'temperature' => 0.7,
+            ]);
+
+            if ($response->successful()) {
+                $result = $response->json();
+                $content = $result['choices'][0]['message']['content'] ?? '';
+
+                if ($content) {
+                    Log::info('OpenAI fallback successful', ['message' => $userMessage]);
+                    return trim($content);
+                }
+            }
+
+            Log::warning('OpenAI fallback failed', ['status' => $response->status()]);
+            return null;
+
+        } catch (\Exception $e) {
+            Log::error('OpenAI fallback error: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Test koneksi ke Gemini API
      */
     public function testGemini()
     {
         try {
             $geminiService = new GeminiService();
-            
+
             $testPrompt = "finishing sistem management karyawan, fix bug, merging branch feature dan deployment FE dan BE";
-            
+
             $result = $geminiService->generateContent($testPrompt, [
                 'jenis_kegiatan' => 'Berita Acara Kegiatan',
                 'lokasi' => 'Graha Telkomsigma II, Tangerang Selatan'
             ]);
-            
+
             if ($result) {
                 return response()->json([
                     'success' => true,
@@ -912,10 +1641,10 @@ Berikan output dalam bahasa Indonesia yang profesional dan teknis. Pastikan JSON
                     'test_prompt' => $testPrompt
                 ], 500);
             }
-            
+
         } catch (\Exception $e) {
             Log::error('Test Gemini API Error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error testing Gemini API: ' . $e->getMessage(),

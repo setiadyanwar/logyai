@@ -63,12 +63,13 @@ class ExportLogToPortal implements ShouldQueue
 
         // Prepare log data
         $logData = [
-            'tanggal' => \Carbon\Carbon::parse($this->logEntry->tanggal)->format('d/m/Y'),
+            'tanggal' => \Carbon\Carbon::parse($this->logEntry->tanggal)->format('Y-m-d'),
             'waktu_mulai' => $this->logEntry->waktu_mulai,
             'waktu_selesai' => $this->logEntry->waktu_selesai,
             'jenis_kegiatan' => $this->logEntry->jenis_kegiatan,
+            'dosen_penggerak' => $this->logEntry->dosen_penggerak,
+            'tipe_penyelenggaraan' => $this->logEntry->tipe_penyelenggaraan,
             'lokasi' => $this->logEntry->lokasi,
-            'judul' => $this->logEntry->judul,
             'keterangan' => $this->logEntry->keterangan,
             'bukti_path' => $this->logEntry->bukti_path ? Storage::path('public/' . $this->logEntry->bukti_path) : null
         ];
@@ -79,12 +80,44 @@ class ExportLogToPortal implements ShouldQueue
         ];
 
         // Execute Playwright script
-        $scriptPath = base_path('scripts/export-portal.js');
-        $logDataJson = json_encode($logData);
-        $credentialsJson = json_encode($credentials);
-        
-        $command = "cd " . base_path() . " && node {$scriptPath} '{$logDataJson}' '{$credentialsJson}' 2>&1";
+        $scriptPath = base_path('scripts/export-portal.cjs');
+        $logDataJson = json_encode($logData, JSON_UNESCAPED_SLASHES);
+        $credentialsJson = json_encode($credentials, JSON_UNESCAPED_SLASHES);
+
+        // Set environment variables for the Node.js process (Windows compatible)
+        $headless = env('PLAYWRIGHT_HEADLESS', 'false') === 'false' ? 'false' : 'true';
+
+        // Detect OS for proper command syntax
+        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+
+        if ($isWindows) {
+            // Windows: Use 'set' command for environment variables
+            $command = sprintf(
+                'cd /d "%s" && set PLAYWRIGHT_HEADLESS=%s && set HEADLESS=%s && node "%s" "%s" "%s" 2>&1',
+                base_path(),
+                $headless,
+                $headless,
+                $scriptPath,
+                addslashes($logDataJson),
+                addslashes($credentialsJson)
+            );
+        } else {
+            // Linux/Mac: Use export or inline env vars
+            $command = sprintf(
+                'cd "%s" && PLAYWRIGHT_HEADLESS=%s HEADLESS=%s node "%s" \'%s\' \'%s\' 2>&1',
+                base_path(),
+                $headless,
+                $headless,
+                $scriptPath,
+                $logDataJson,
+                $credentialsJson
+            );
+        }
+
+        Log::info("Executing Playwright command: " . $command);
         $output = shell_exec($command);
+
+        Log::info("Playwright output: " . $output);
         
         if (strpos($output, 'SUCCESS') === false) {
             throw new \Exception('Playwright export failed: ' . $output);

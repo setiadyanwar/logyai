@@ -15,6 +15,8 @@ Route::get('/', function () {
 })->name('home');
 
 Route::post('/ai/suggest', [\App\Http\Controllers\AIController::class, 'generateSuggestion'])->name('ai.suggest');
+Route::post('/ai/auto-fill', [\App\Http\Controllers\AIController::class, 'autoFillFromTitle'])->name('ai.autofill');
+Route::post('/ai/chatbot', [\App\Http\Controllers\AIController::class, 'chatbot'])->name('ai.chatbot');
 Route::get('/ai/test', [\App\Http\Controllers\AIController::class, 'testGemini'])->name('ai.test');
 
 Route::controller(\App\Http\Controllers\LogEntryController::class)

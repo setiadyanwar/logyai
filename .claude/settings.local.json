@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(php artisan config:clear:*)",
+      "Bash(php artisan:*)",
+      "Bash(composer:*)",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyBZI5N5AnNxr1R1lKwyIVY96QPHPk7RgjQ\" -H \"Content-Type: application/json\" -d \"{\"\"contents\"\":[{\"\"parts\"\":[{\"\"text\"\":\"\"Hi\"\"}]}]}\")",
+      "Bash(git checkout:*)",
+      "Bash(mkdir:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx playwright install:*)",
+      "Bash(set PLAYWRIGHT_HEADLESS=false)",
+      "Bash(node scripts/export-portal.js \"{\"\"tanggal\"\":\"\"2025-01-10\"\",\"\"waktu_mulai\"\":\"\"08:30\"\",\"\"waktu_selesai\"\":\"\"17:30\"\",\"\"jenis_kegiatan\"\":\"\"Berita Acara Kegiatan\"\",\"\"dosen_penggerak\"\":\"\"Amata Fami, M.Ds. - 201807198507182001\"\",\"\"tipe_penyelenggaraan\"\":\"\"hybrid\"\",\"\"lokasi\"\":\"\"PT Telkomsigma\"\",\"\"keterangan\"\":\"\"Test export automation\"\",\"\"bukti_path\"\":\"\"D:\\\\laragon\\\\www\\\\logyai\\\\storage\\\\app\\\\public\\\\bukti\\\\test.jpg\"\"}\" \"{\"\"username\"\":\"\"setiadyanwar\"\",\"\"password\"\":\"\"SetiadyAn02\"\"}\")",
+      "Bash(node:*)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

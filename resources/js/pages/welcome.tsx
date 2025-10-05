@@ -1,8 +1,11 @@
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import ReactBitsGradientText from '../components/ReactBitsGradientText';
 import ReactBitsShinyText from '../components/ReactBitsShinyText';
 import ReactBitsTypewriter from '../components/ReactBitsTypewriter';
+import FloatingChatbot from '../components/FloatingChatbot';
+import { AISuggestionButton } from '../components/AISuggestionButton';
+import { useAISuggestion } from '../hooks/useAISuggestion';
 
 // Ikon SVG ringan (tanpa dependency) untuk tombol
 const Icon = ({ path, className = 'h-5 w-5' }: { path: React.ReactNode; className?: string }) => (
@@ -46,15 +49,6 @@ const CameraIcon = ({ className }: { className?: string }) => (
   <Icon className={className} path={<>
     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h3l2-3h8l2 3h3a2 2 0 0 1 2 2z" />
     <circle cx="12" cy="13" r="4" />
-  </>} />
-);
-
-const RobotIcon = ({ className }: { className?: string }) => (
-  <Icon className={className} path={<>
-    <rect x="7" y="8" width="10" height="8" rx="2" />
-    <circle cx="10" cy="12" r="1" />
-    <circle cx="14" cy="12" r="1" />
-    <path d="M12 6v2" />
   </>} />
 );
 
@@ -166,24 +160,57 @@ export default function Welcome() {
   const [selectAll, setSelectAll] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
+  const [isScrolled, setIsScrolled] = useState(false);
+
+  // Detect scroll for navbar animation
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 20);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // Disable scroll when modal is open
+  useEffect(() => {
+    if (openModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [openModal]);
 
   // Close camera modal when other modals open, but allow camera to open when form modal is open
   useEffect(() => {
     if (showDeleteModal && cameraOpen) {
-      closeCameraModal();
+      // Stop all tracks in the stream
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        setStream(null);
+      }
+      setVideoReady(false);
+      setCameraOpen(false);
+      cameraOpenRef.current = false;
+      setCameraSupported(true);
     }
-  }, [showDeleteModal, cameraOpen]);
+  }, [showDeleteModal, cameraOpen, stream]);
 
   // Monitor modal state changes
   useEffect(() => {
     console.log('🔍 Modal state changed:', { openModal, editingId });
-    
+
     // Only log modal close if it was previously open and not during initial render
     if (!openModal && editingId !== null) {
       console.log('❌ Modal was closed! Stack trace:', new Error().stack);
       console.log('❌ Form state at close:', form.data);
       console.log('❌ Form errors at close:', form.errors);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openModal, editingId]);
 
   // IMPROVED VIDEO STREAM MANAGEMENT
@@ -287,7 +314,6 @@ export default function Welcome() {
     dosen_penggerak: string;
     tipe_penyelenggaraan: 'hybrid' | 'offline' | 'online';
     lokasi: string;
-    judul?: string;
     keterangan: string;
     bukti?: File | null;
     return_home?: boolean;
@@ -299,7 +325,6 @@ export default function Welcome() {
     dosen_penggerak: '',
     tipe_penyelenggaraan: 'hybrid',
     lokasi: '',
-    judul: '',
     keterangan: '',
     bukti: null,
     return_home: true,
@@ -333,7 +358,6 @@ export default function Welcome() {
       dosen_penggerak: '',
       tipe_penyelenggaraan: 'hybrid',
       lokasi: '',
-      judul: '',
       keterangan: '',
       bukti: null,
       return_home: true,
@@ -446,7 +470,6 @@ export default function Welcome() {
       dosen_penggerak: l.dosen_penggerak || '',
       tipe_penyelenggaraan: l.tipe_penyelenggaraan || 'hybrid',
       lokasi: l.lokasi || '',
-      judul: l.judul || '',
       keterangan: l.keterangan || '',
       bukti: null,
       return_home: true,
@@ -474,7 +497,6 @@ export default function Welcome() {
     
     return () => clearInterval(interval);
   }, []);
-  const [aiLoading, setAiLoading] = useState(false);
   const [promptText, setPromptText] = useState('');
   const [promptLoading, setPromptLoading] = useState(false);
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -490,15 +512,13 @@ export default function Welcome() {
     dosen_penggerak: string;
     tipe_penyelenggaraan: 'hybrid' | 'offline' | 'online';
     lokasi: string;
-    judul?: string;
     keterangan: string;
     bukti?: File | null;
     return_home?: boolean;
   } | null>(null); // State untuk menyimpan data sementara
-  
+
   // State lokal untuk data AI yang di-generate
   const [aiGeneratedData, setAiGeneratedData] = useState<{
-    judul?: string;
     keterangan?: string;
     jenis_kegiatan?: string;
     lokasi?: string;
@@ -509,6 +529,13 @@ export default function Welcome() {
   
   // State untuk force re-render form setelah AI generate
   const [formKey, setFormKey] = useState(0);
+
+  // Chatbot floating state
+  const [showChatbot, setShowChatbot] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string}>>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null!);
 
   // Only prevent Escape key during generation
   useEffect(() => {
@@ -697,9 +724,9 @@ export default function Welcome() {
     }, 'image/jpeg', 0.9);
   };
 
-  const closeCameraModal = () => {
+  const closeCameraModal = useCallback(() => {
     console.log('Closing camera modal');
-    
+
     // Stop all tracks in the stream
     if (stream) {
       console.log('Stopping stream tracks');
@@ -709,7 +736,7 @@ export default function Welcome() {
       });
       setStream(null);
     }
-    
+
     // Reset video element
     const video = document.querySelector('#camera-video') as HTMLVideoElement;
     if (video) {
@@ -717,14 +744,14 @@ export default function Welcome() {
       video.srcObject = null;
       video.load();
     }
-    
+
     // Reset all states
     setVideoReady(false);
     setCameraOpen(false);
     cameraOpenRef.current = false;
     setCameraSupported(true);
     console.log('Camera modal closed, states reset');
-  };
+  }, [stream]);
 
   const handleImage = async (e: Event | React.ChangeEvent<HTMLInputElement>) => {
     const target = e.target as HTMLInputElement | null;
@@ -787,171 +814,48 @@ export default function Welcome() {
     setImagePreview(previewUrl);
   };
 
+  // Use AI Suggestion hook
+  const { isLoading: aiSuggestionLoading, getSuggestion } = useAISuggestion();
+
   const askAI = async (e?: React.MouseEvent) => {
-    // Prevent any form submission
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
-    
-    // Validasi input yang diperlukan
-    if (!form.data.jenis_kegiatan) {
-      showToast('Pilih jenis kegiatan terlebih dahulu', 'error');
-      return;
-    }
-    
-    if (!form.data.dosen_penggerak) {
-      showToast('Pilih dosen penggerak terlebih dahulu', 'error');
-      return;
-    }
-    
-    if (!form.data.lokasi) {
-      showToast('Isi lokasi kegiatan terlebih dahulu', 'error');
-      return;
-    }
-    
-    // Jika belum ada judul, ingatkan untuk mengisi judul terlebih dahulu
-    if (!form.data.judul) {
-      showToast('Masukkan judul kegiatan terlebih dahulu agar AI dapat memperbaiki dan melengkapi deskripsi berdasarkan judul yang Anda berikan', 'error');
-      return;
-    }
-    
-    setAiLoading(true);
-    try {
-      const res = await fetch(route('ai.suggest'), {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-        },
-        body: JSON.stringify({
-          jenis_kegiatan: form.data.jenis_kegiatan,
-          tipe_penyelenggaraan: form.data.tipe_penyelenggaraan,
-          lokasi: form.data.lokasi,
-          waktu_mulai: form.data.waktu_mulai,
-          waktu_selesai: form.data.waktu_selesai,
-          dosen_penggerak: form.data.dosen_penggerak,
-          judul: form.data.judul, // Kirim judul untuk perbaikan AI
-          keterangan: form.data.keterangan, // Kirim keterangan existing jika ada
-        }),
-      });
-      const json = await res.json();
-      
-      if (json.success) {
-        // Update form dengan hasil generate
-        console.log('🔴 Setting form data from AI response:', json.data);
-        console.log('🔴 Form state before setting data:', form.data);
-        
-        // Simpan data AI ke state lokal
-        console.log('🔴 Saving AI data to local state');
+
+    await getSuggestion(
+      form.data,
+      (aiData) => {
+        // Success callback
         setAiGeneratedData({
-          judul: json.data?.judul,
-          keterangan: json.data?.keterangan,
-          jenis_kegiatan: json.data?.jenis_kegiatan,
-          lokasi: json.data?.lokasi,
-          tipe_penyelenggaraan: json.data?.tipe_penyelenggaraan,
-          tanggal: json.data?.tanggal,
-          dosen_penggerak: json.data?.dosen_penggerak,
+          keterangan: aiData.keterangan,
+          jenis_kegiatan: aiData.jenis_kegiatan,
+          lokasi: aiData.lokasi,
+          tipe_penyelenggaraan: (aiData.tipe_penyelenggaraan as 'hybrid' | 'offline' | 'online') || 'hybrid',
+          tanggal: aiData.tanggal,
+          dosen_penggerak: aiData.dosen_penggerak,
         });
-        
-        // Set data ke form menggunakan setData individual untuk memastikan tersimpan
-        console.log('🔴 Setting form data individually to ensure it saves');
-        
-        if (json.data?.judul) {
-          console.log('Setting judul:', json.data.judul);
-          form.setData('judul', json.data.judul);
-        }
-        if (json.data?.keterangan) {
-          console.log('Setting keterangan:', json.data.keterangan);
-          form.setData('keterangan', json.data.keterangan);
-        }
-        if (json.data?.jenis_kegiatan) {
-          console.log('Setting jenis_kegiatan:', json.data.jenis_kegiatan);
-          form.setData('jenis_kegiatan', json.data.jenis_kegiatan);
-        }
-        if (json.data?.lokasi) {
-          console.log('Setting lokasi:', json.data.lokasi);
-          form.setData('lokasi', json.data.lokasi);
-        }
-        if (json.data?.tipe_penyelenggaraan) {
-          console.log('Setting tipe_penyelenggaraan:', json.data.tipe_penyelenggaraan);
-          form.setData('tipe_penyelenggaraan', json.data.tipe_penyelenggaraan);
-        }
-        
-        // Auto-generate fields yang belum ada
-        console.log('🔴 Auto-generating missing fields...');
-        
-        // Set tanggal default jika belum ada
-        if (!json.data?.tanggal) {
-          const today = new Date().toISOString().split('T')[0];
-          console.log('Setting default tanggal:', today);
-          form.setData('tanggal', today);
-        } else {
-          console.log('Setting tanggal from AI:', json.data.tanggal);
-          form.setData('tanggal', json.data.tanggal);
-        }
-        
-        // Set dosen penggerak default jika belum ada
-        if (!json.data?.dosen_penggerak) {
-          console.log('Setting default dosen_penggerak: Dr. Ir. Suprihatin, M.Si');
-          form.setData('dosen_penggerak', 'Dr. Ir. Suprihatin, M.Si');
-        } else {
-          console.log('Setting dosen_penggerak from AI:', json.data.dosen_penggerak);
-          form.setData('dosen_penggerak', json.data.dosen_penggerak);
-        }
-        
-        // Set default values untuk field yang wajib jika belum ada
-        if (!json.data?.jenis_kegiatan) {
-          console.log('Setting default jenis_kegiatan: praktik');
-          form.setData('jenis_kegiatan', 'praktik');
-        }
-        if (!json.data?.lokasi) {
-          console.log('Setting default lokasi: Graha Telkomsigma II, Tangerang Selatan');
-          form.setData('lokasi', 'Graha Telkomsigma II, Tangerang Selatan');
-        }
-        if (!json.data?.tipe_penyelenggaraan) {
-          console.log('Setting default tipe_penyelenggaraan: offline');
-          form.setData('tipe_penyelenggaraan', 'offline');
-        }
-        
-        // Log data setelah semua setData selesai
-        console.log('🔴 Form state after setting all data:', form.data);
-        console.log('🔴 AI Generated Data state:', aiGeneratedData);
-        console.log('🔴 Modal state after setting data:', { openModal, editingId });
-        
-        // Success - gunakan toast, modal tetap terbuka
-        showToast('Logbook berhasil di-generate dengan Gemini AI! Silakan review dan edit jika diperlukan.', 'success');
-        console.log('Logbook berhasil di-generate dengan Gemini AI!');
-        
-        // Double check form data after a short delay dengan logging yang lebih detail
-        setTimeout(() => {
-          console.log('🔴 Form state after timeout:', form.data);
-          console.log('🔴 AI Generated Data state after timeout:', aiGeneratedData);
-          console.log('🔴 Modal state after timeout:', { openModal, editingId });
-          console.log('🔴 Checking individual fields:');
-          console.log('  - tanggal:', form.data.tanggal);
-          console.log('  - judul:', form.data.judul);
-          console.log('  - keterangan:', form.data.keterangan);
-          console.log('  - jenis_kegiatan:', form.data.jenis_kegiatan);
-          console.log('  - lokasi:', form.data.lokasi);
-          console.log('  - tipe_penyelenggaraan:', form.data.tipe_penyelenggaraan);
-          console.log('  - dosen_penggerak:', form.data.dosen_penggerak);
-        }, 200); // Increase timeout untuk memastikan state terupdate
-        
-        // Force modal to stay open
+
+        // Update form dengan data dari AI
+        if (aiData.keterangan) form.setData('keterangan', aiData.keterangan);
+        if (aiData.jenis_kegiatan) form.setData('jenis_kegiatan', aiData.jenis_kegiatan);
+        if (aiData.lokasi) form.setData('lokasi', aiData.lokasi);
+        if (aiData.tipe_penyelenggaraan) form.setData('tipe_penyelenggaraan', aiData.tipe_penyelenggaraan as 'hybrid' | 'offline' | 'online');
+        if (aiData.tanggal) form.setData('tanggal', aiData.tanggal);
+        if (aiData.dosen_penggerak) form.setData('dosen_penggerak', aiData.dosen_penggerak);
+
+        showToast('Deskripsi berhasil diperbaiki oleh Gemini AI! Silakan review dan edit jika diperlukan.', 'success');
+
+        // Ensure modal stays open
         if (!openModal) {
-          console.log('🔴 Modal was closed, forcing it back open');
           setOpenModal(true);
         }
-      } else {
-        showToast('Gagal mendapatkan saran AI: ' + (json.message || 'Unknown error'), 'error');
+      },
+      (errorMessage) => {
+        // Error callback
+        showToast(errorMessage, 'error');
       }
-    } catch (error) {
-      console.error('AI Error:', error);
-      showToast('Terjadi kesalahan saat menghubungi AI', 'error');
-    } finally {
-      setAiLoading(false);
-    }
+    );
   };
 
   const generateFromPrompt = async (e?: React.MouseEvent) => {
@@ -966,8 +870,15 @@ export default function Welcome() {
     console.log('Current form data before generate:', form.data);
     console.log('Current editingId:', editingId);
     
-    if (!promptText.trim()) {
+    const trimmedPrompt = promptText.trim();
+
+    if (!trimmedPrompt) {
       showToast('Masukkan deskripsi kegiatan terlebih dahulu', 'error');
+      return;
+    }
+
+    if (trimmedPrompt.length < 3) {
+      showToast('Deskripsi kegiatan minimal 3 karakter', 'error');
       return;
     }
     
@@ -1012,7 +923,6 @@ export default function Welcome() {
         // Simpan data AI ke state lokal
         console.log('🔴 Saving AI data to local state');
         setAiGeneratedData({
-          judul: data.data?.judul,
           keterangan: data.data?.keterangan,
           jenis_kegiatan: data.data?.jenis_kegiatan,
           lokasi: data.data?.lokasi,
@@ -1020,14 +930,10 @@ export default function Welcome() {
           tanggal: data.data?.tanggal,
           dosen_penggerak: data.data?.dosen_penggerak,
         });
-        
+
         // Set data ke form menggunakan setData individual untuk memastikan tersimpan
         console.log('🔴 Setting form data individually to ensure it saves');
-        
-        if (data.data?.judul) {
-          console.log('Setting judul:', data.data.judul);
-          form.setData('judul', data.data.judul);
-        }
+
         if (data.data?.keterangan) {
           console.log('Setting keterangan:', data.data.keterangan);
           form.setData('keterangan', data.data.keterangan);
@@ -1101,7 +1007,6 @@ export default function Welcome() {
           console.log('🔴 Modal state after timeout:', { openModal, editingId });
           console.log('🔴 Checking individual fields:');
           console.log('  - tanggal:', form.data.tanggal);
-          console.log('  - judul:', form.data.judul);
           console.log('  - keterangan:', form.data.keterangan);
           console.log('  - jenis_kegiatan:', form.data.jenis_kegiatan);
           console.log('  - lokasi:', form.data.lokasi);
@@ -1241,8 +1146,8 @@ export default function Welcome() {
   // Function untuk mengecek apakah form sudah valid
   const isFormValid = () => {
     const requiredFields = [
-      'tanggal', 'waktu_mulai', 'waktu_selesai', 'jenis_kegiatan', 
-      'dosen_penggerak', 'lokasi', 'judul', 'keterangan'
+      'tanggal', 'waktu_mulai', 'waktu_selesai', 'jenis_kegiatan',
+      'dosen_penggerak', 'lokasi', 'keterangan'
     ];
     
     const hasAllRequiredFields = requiredFields.every(field => 
@@ -1259,6 +1164,49 @@ export default function Welcome() {
   const showToast = (message: string, type: 'success' | 'error') => {
     setToast({message, type});
     setTimeout(() => setToast(null), 3000);
+  };
+
+  // Chatbot functions
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+
+    const userMessage = chatInput.trim();
+    setChatInput('');
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setChatLoading(true);
+
+    try {
+      const response = await fetch(route('ai.chatbot'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        body: JSON.stringify({
+          message: userMessage,
+          history: chatMessages.map(msg => ({ role: msg.role, content: msg.content })),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.message) {
+        setChatMessages(prev => [...prev, { role: 'assistant', content: data.message }]);
+        setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+      } else {
+        showToast('Gagal mendapatkan response dari AI', 'error');
+      }
+    } catch (error) {
+      console.error('Chat error:', error);
+      showToast('Terjadi kesalahan saat menghubungi AI', 'error');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const clearChat = () => {
+    setChatMessages([]);
+    setChatInput('');
   };
 
   // Simplified modal state management
@@ -1289,60 +1237,79 @@ export default function Welcome() {
       <Head title="Logyai – Logbook Magang AI" />
 
       {/* Navbar */}
-    <header className="sticky top-0 z-10 bg-white border-b border-gray-200">
-                <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white font-semibold text-sm">
-              📝
-                                    </span>
-            <span className="text-sm font-medium tracking-wide text-gray-900">Logyai</span>
-          </div>
+      <div className={`sticky z-40 transition-all duration-300 ${
+        isScrolled ? 'top-4' : 'top-0'
+      }`}>
+        <header className={`mx-auto bg-white dark:bg-gray-900 transition-all duration-300 ${
+          isScrolled
+            ? 'max-w-6xl rounded-2xl shadow-xl border-2 border-gray-200 dark:border-gray-700'
+            : 'max-w-full shadow-sm border-b border-gray-200/50 dark:border-gray-700/50'
+        }`}>
+          <div className={`flex items-center justify-between transition-all duration-300 ${
+            isScrolled ? 'px-6 py-3' : 'px-8 py-4'
+          }`}>
+          {/* Logo */}
           <div className="flex items-center gap-3">
+            <div className={`flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/30 transition-all duration-300 ${
+              isScrolled ? 'h-9 w-9' : 'h-10 w-10'
+            }`}>
+              <span className={`transition-all duration-300 ${isScrolled ? 'text-lg' : 'text-xl'}`}>📝</span>
+            </div>
+            <div className="flex flex-col">
+              <span className={`font-bold text-gray-900 dark:text-gray-100 transition-all duration-300 ${
+                isScrolled ? 'text-base' : 'text-lg'
+              }`}>Logyai</span>
+              <span className={`text-gray-500 dark:text-gray-400 -mt-1 transition-all duration-300 ${
+                isScrolled ? 'text-[10px]' : 'text-xs'
+              }`}>Logbook Magang AI</span>
+            </div>
+          </div>
+
+          {/* Right Side */}
+          <div className="flex items-center gap-3">
+            {/* Beta Badge */}
+            <div className={`hidden sm:flex items-center gap-2 bg-indigo-600 dark:from-indigo-900/30 dark:to-purple-900/30 dark:bg-gradient-to-r rounded-full border-2 border-indigo-700 dark:border-indigo-700 shadow-md transition-all duration-300 ${
+              isScrolled ? 'px-3 py-1.5' : 'px-4 py-2'
+            }`}>
+              <span className={`relative flex transition-all duration-300 ${isScrolled ? 'h-1.5 w-1.5' : 'h-2 w-2'}`}>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-full w-full bg-white"></span>
+              </span>
+              <span className={`font-bold text-white dark:text-indigo-300 transition-all duration-300 ${
+                isScrolled ? 'text-[10px]' : 'text-xs'
+              }`}>AI Powered</span>
+            </div>
+
+            {/* Theme Toggle */}
             <button
               onClick={(e) => {
-                console.log('Button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
                 toggleTheme();
               }}
-              className="rounded-lg border border-gray-300 bg-white p-2 text-gray-700 shadow-sm hover:bg-gray-50 transition-colors relative z-10"
-              style={{
-                backgroundColor: isDark ? '#1f2937' : '#ffffff',
-                borderColor: isDark ? '#374151' : '#e2e8f0',
-                color: isDark ? '#f9fafb' : '#0f172a'
-              }}
+              className={`group relative rounded-full transition-all duration-300 ${
+                isDark
+                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg shadow-indigo-500/30'
+                  : 'bg-gradient-to-r from-amber-400 to-orange-500 shadow-lg shadow-orange-500/30'
+              } ${isScrolled ? 'p-2.5' : 'p-3'}`}
               title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
-              {isDark ? (
-                // Sun icon for light mode
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <circle cx="12" cy="12" r="5"></circle>
-                  <line x1="12" y1="1" x2="12" y2="3"></line>
-                  <line x1="12" y1="21" x2="12" y2="23"></line>
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                  <line x1="1" y1="12" x2="3" y2="12"></line>
-                  <line x1="21" y1="12" x2="23" y2="12"></line>
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                                            </svg>
-              ) : (
-                // Moon icon for dark mode
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                                            </svg>
-              )}
+              <div className={`relative transition-all duration-300 ${isScrolled ? 'w-5 h-5' : 'w-6 h-6'}`}>
+                {isDark ? (
+                  <svg className="w-full h-full text-white transition-all duration-300 group-hover:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+                  </svg>
+                ) : (
+                  <svg className="w-full h-full text-white transition-all duration-300 group-hover:scale-110 group-hover:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                )}
+              </div>
             </button>
-            <span className="rounded-full border border-gray-300 bg-white px-3 py-1 text-xs text-gray-700 shadow-sm flex items-center gap-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200">
-              <span className="relative">
-                <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-indigo-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
-                                    </span>
-              <ReactBitsShinyText text="Beta • Terintegrasi AI & Ekspor Portal" className="text-indigo-600 font-medium" />
-                                    </span>
-                        </div>
-                        </div>
-      </header>
+          </div>
+        </div>
+        </header>
+      </div>
 
       {/* Hero */}
       <section
@@ -1460,18 +1427,18 @@ export default function Welcome() {
             Catat logbook magang lebih cepat dengan bantuan AI
           </ReactBitsGradientText>
           <p className="mt-3 max-w-2xl text-gray-700 dark:text-gray-300 text-lg leading-relaxed text-center">
-            Buat entri, minta AI menulis judul & deskripsi, simpan bukti dengan watermark, dan ekspor otomatis ke portal IPB. 
+            Buat entri, minta AI menulis deskripsi, simpan bukti dengan watermark, dan ekspor otomatis ke portal IPB. 
             <br />
             <ReactBitsShinyText text="Sederhana, rapi, hemat waktu." className="text-gray-800 dark:text-gray-200 font-medium" />
           </p>
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-            <button onClick={openCreateModal} className="group rounded-lg bg-indigo-600 px-6 py-3 text-white font-medium shadow-lg shadow-indigo-600/25 hover:bg-indigo-700 hover:shadow-indigo-600/30 transition-all flex items-center gap-2">
+            <button onClick={openCreateModal} className="group rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-white font-semibold shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out flex items-center gap-2">
               <PlusIcon className="h-5 w-5" />
-              <ReactBitsShinyText text="Tambah Log" className="text-white font-medium" />
+              <ReactBitsShinyText text="Tambah Log" className="text-white font-semibold" />
             </button>
-            <a href="#tabel" className="group rounded-lg border-2 border-gray-300 px-6 py-3 font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all flex items-center gap-2 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+            <a href="#tabel" className="group rounded-xl border-2 border-gray-300 bg-white px-6 py-3 font-semibold text-gray-700 shadow-sm hover:shadow-md hover:border-gray-400 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 ease-out flex items-center gap-2 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:border-gray-500">
               <ClipboardIcon className="h-5 w-5" />
-              <ReactBitsShinyText text="Lihat Logbook" className="text-gray-700 dark:text-gray-200 font-medium" />
+              <ReactBitsShinyText text="Lihat Logbook" className="text-gray-700 dark:text-gray-200 font-semibold" />
             </a>
           </div>
           <div className="mt-4 flex flex-wrap gap-2 justify-center">
@@ -1518,7 +1485,7 @@ export default function Welcome() {
                 <th className="px-4 py-4 font-medium">Tanggal</th>
                 <th className="px-4 py-4 font-medium">Waktu</th>
                 <th className="hidden px-4 py-4 font-medium sm:table-cell">Jenis</th>
-                <th className="px-4 py-4 font-medium">Judul</th>
+                <th className="px-4 py-4 font-medium">Keterangan</th>
                 <th className="hidden px-4 py-4 font-medium sm:table-cell">Lokasi</th>
                 <th className="hidden px-4 py-4 font-medium md:table-cell">Dosen</th>
                 <th className="px-4 py-4 font-medium">Bukti</th>
@@ -1553,7 +1520,7 @@ export default function Welcome() {
                         {jenisMap[l.jenis_kegiatan] || l.jenis_kegiatan}
                       </td>
                       <td className="px-4 py-4 text-gray-900 dark:text-gray-100 font-medium">
-                        {l.judul || l.keterangan?.substring(0, 50) + '...' || '-'}
+                        {l.keterangan?.substring(0, 50) + '...' || '-'}
                       </td>
                       <td className="hidden px-4 py-4 text-gray-800 dark:text-gray-200 sm:table-cell">{l.lokasi}</td>
                       <td className="hidden px-4 py-4 text-gray-800 dark:text-gray-200 md:table-cell">
@@ -1586,7 +1553,7 @@ export default function Welcome() {
                               console.log('🔴 Edit button clicked for log:', l.id);
                               openEditModal(l);
                             }} 
-                            className="cursor-pointer rounded border-2 border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400 transition-colors dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/30 flex items-center gap-1 relative z-50 pointer-events-auto touch-manipulation"
+                            className="cursor-pointer rounded-lg bg-indigo-50 border border-indigo-200 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 hover:border-indigo-300 hover:shadow-sm transition-all duration-200 dark:bg-indigo-900/20 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/40 flex items-center gap-1 relative z-50 pointer-events-auto touch-manipulation"
                             style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
                           >
                             <PencilIcon className="h-3 w-3" />
@@ -1617,7 +1584,7 @@ export default function Welcome() {
                                 showToast('Terjadi kesalahan saat mengekspor', 'error');
                               }
                             }}
-                            className="cursor-pointer rounded border-2 border-green-300 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-50 hover:border-green-400 transition-colors dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900/30 flex items-center gap-1 relative z-50 pointer-events-auto touch-manipulation"
+                            className="cursor-pointer rounded-lg bg-green-50 border border-green-200 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 hover:border-green-300 hover:shadow-sm transition-all duration-200 dark:bg-green-900/20 dark:border-green-700 dark:text-green-300 dark:hover:bg-green-900/40 flex items-center gap-1 relative z-50 pointer-events-auto touch-manipulation"
                             style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
                           >
                             <ClipboardIcon className="h-3 w-3" />
@@ -1630,7 +1597,7 @@ export default function Welcome() {
                               console.log('🔴 Delete button clicked for log:', l.id);
                               handleDeleteClick(l.id);
                             }}
-                            className="cursor-pointer rounded border-2 border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 hover:border-red-400 transition-colors dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30 flex items-center gap-1 relative z-50 pointer-events-auto touch-manipulation"
+                            className="cursor-pointer rounded-lg bg-red-50 border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 hover:border-red-300 hover:shadow-sm transition-all duration-200 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/40 flex items-center gap-1 relative z-50 pointer-events-auto touch-manipulation"
                             style={{ pointerEvents: 'auto', touchAction: 'manipulation' }}
                           >
                             <XIcon className="h-3 w-3" />
@@ -1653,13 +1620,13 @@ export default function Welcome() {
         </div>
       </section>
 
-      {/* Floating help (cara kerja) toggle */}
+      {/* Floating help (cara kerja) toggle - KIRI BAWAH */}
       <input id="help-toggle" type="checkbox" className="peer fixed inset-0 z-30 hidden" />
-      <label htmlFor="help-toggle" className="fixed bottom-6 right-6 z-40 inline-flex h-12 cursor-pointer select-none items-center justify-center rounded-full bg-indigo-600 px-5 text-sm font-bold text-white shadow-xl hover:bg-indigo-700 hover:shadow-2xl transition-all gap-2">
+      <label htmlFor="help-toggle" className="fixed bottom-6 left-6 z-40 inline-flex h-12 cursor-pointer select-none items-center justify-center rounded-full bg-indigo-600 px-5 text-sm font-bold text-white shadow-xl hover:bg-indigo-700 hover:shadow-2xl transition-all gap-2">
         <QuestionIcon className="h-5 w-5" />
         <ReactBitsShinyText text="Cara Kerja" className="text-white font-medium" />
       </label>
-      <div className="pointer-events-none fixed bottom-24 right-6 z-40 w-80 translate-y-4 opacity-0 transition-all peer-checked:translate-y-0 peer-checked:opacity-100">
+      <div className="pointer-events-none fixed bottom-24 left-6 z-40 w-80 translate-y-4 opacity-0 transition-all peer-checked:translate-y-0 peer-checked:opacity-100">
         <div className="pointer-events-auto rounded-xl border-2 border-gray-200 bg-white p-5 shadow-2xl ring-1 ring-indigo-100 dark:border-gray-700 dark:bg-gray-800 dark:ring-indigo-900/30">
           <div className="mb-3 text-base font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <span>📖</span>
@@ -1667,7 +1634,7 @@ export default function Welcome() {
           </div>
           <ol className="list-decimal space-y-2 pl-4 text-sm text-gray-700 dark:text-gray-300">
             <li><span className="font-medium">Isi Form:</span> Tambah log dengan mengisi tanggal, waktu, jenis kegiatan, dosen penggerak, tipe penyelenggaraan, dan lokasi</li>
-            <li><span className="font-medium">AI Saran:</span> Klik tombol "AI Saran" untuk mendapatkan judul dan deskripsi otomatis berdasarkan data yang diisi</li>
+            <li><span className="font-medium">AI Saran:</span> Klik tombol "Perbaiki dengan AI" untuk mendapatkan deskripsi otomatis yang profesional</li>
             <li><span className="font-medium">Upload Bukti:</span> Upload foto/dokumen bukti aktivitas (akan otomatis diberi watermark tanggal, waktu, lokasi)</li>
             <li><span className="font-medium">Simpan & Ekspor:</span> Simpan log, lalu klik "Ekspor" untuk mengirim otomatis ke portal IPB</li>
             <li><span className="font-medium">Monitor Status:</span> Pantau status ekspor di dashboard (pending/success/failed)</li>
@@ -1680,30 +1647,37 @@ export default function Welcome() {
 
       {/* Modal Tambah Log (submit langsung dari landing) */}
       {openModal && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 md:p-3" 
-          role="dialog" 
-          aria-modal="true" 
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 md:p-3 animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+          style={{
+            animation: 'fadeIn 0.2s ease-out'
+          }}
           onClick={(e) => {
             // Cegah close modal saat generate
             if (isGenerating || promptLoading) {
               e.preventDefault();
               e.stopPropagation();
+              showToast('Tunggu proses generate selesai', 'error');
               return;
             }
             if (e.target === e.currentTarget) {
-              setOpenModal(false);
+              handleModalClose();
             }
           }}
         >
           {/* Overlay spinner saat loading */}
           {(isGenerating || promptLoading) && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-50">
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-50 animate-fadeIn">
               <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-green-500"></div>
             </div>
           )}
-          <div 
-            className="w-full max-w-6xl h-[95vh] md:h-[90vh] rounded-xl bg-white shadow-2xl ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-700 flex flex-col relative" 
+          <div
+            className="w-full max-w-6xl h-[95vh] md:h-[90vh] rounded-xl bg-white shadow-2xl ring-1 ring-gray-200 dark:bg-gray-900 dark:ring-gray-700 flex flex-col relative animate-slideUp"
+            style={{
+              animation: 'slideUp 0.3s ease-out'
+            }}
             onClick={(e) => {
               if (isGenerating || promptLoading) {
                 e.preventDefault();
@@ -1729,10 +1703,10 @@ export default function Welcome() {
                   </>
                 )}
               </h3>
-              <button 
+              <button
                 type="button"
                 onClick={handleModalClose}
-                className="rounded-xl px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-100 hover:text-gray-900 hover:shadow-md transition-all duration-200 flex items-center gap-2 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 hover:shadow-sm transition-all duration-200 flex items-center gap-2 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={isGenerating || promptLoading}
               >
                 <XIcon className="h-5 w-5" />
@@ -1773,7 +1747,6 @@ export default function Welcome() {
                         { field: 'jenis_kegiatan', label: 'Jenis Kegiatan' },
                         { field: 'dosen_penggerak', label: 'Dosen Penggerak' },
                         { field: 'lokasi', label: 'Lokasi' },
-                        { field: 'judul', label: 'Judul' },
                         { field: 'keterangan', label: 'Keterangan' }
                       ];
                       
@@ -1885,7 +1858,6 @@ export default function Welcome() {
                                     dosen_penggerak: tempFormData.dosen_penggerak || '',
                                     tipe_penyelenggaraan: tempFormData.tipe_penyelenggaraan || 'hybrid',
                                     lokasi: tempFormData.lokasi || '',
-                                    judul: tempFormData.judul || '',
                                     keterangan: tempFormData.keterangan || '',
                                     bukti: tempFormData.bukti || null,
                                     return_home: tempFormData.return_home ?? true,
@@ -2016,21 +1988,6 @@ export default function Welcome() {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Judul <span className="text-red-500 font-bold">*</span></label>
-                      {showSkeleton ? (
-                        <div className="w-full h-12 bg-gradient-to-r from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-600 rounded-xl animate-pulse"></div>
-                      ) : (
-                        <input 
-                          className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-indigo-400 dark:focus:ring-indigo-900/30" 
-                          placeholder="Masukkan judul kegiatan yang jelas dan deskriptif" 
-                          value={form.data.judul || aiGeneratedData?.judul || ''} 
-                          onChange={(e) => form.setData('judul', e.target.value)} 
-                          required 
-                        />
-                      )}
-                    </div>
-
                     <div className="space-y-3">
                       <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">Keterangan <span className="text-red-500 font-bold">*</span></label>
                       {showSkeleton ? (
@@ -2050,20 +2007,17 @@ export default function Welcome() {
                         />
                       )}
                       <div className="flex gap-3">
-                        <button 
-                          type="button" 
+                        <AISuggestionButton
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            console.log('🔴 AI Saran button clicked');
                             askAI(e);
-                          }} 
-                          disabled={aiLoading || isGenerating} 
-                          className="rounded-xl border-2 border-indigo-300 px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-400 hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-900/30 dark:hover:shadow-indigo-900/20"
-                        >
-                          <RobotIcon className="h-5 w-5" />
-                          <ReactBitsShinyText text={aiLoading ? 'Meminta AI...' : 'AI Saran'} className="text-indigo-700 dark:text-indigo-300 font-semibold" />
-                        </button>
+                          }}
+                          isLoading={aiSuggestionLoading}
+                          disabled={isGenerating || aiSuggestionLoading}
+                          loadingText="Memperbaiki..."
+                          buttonText="Perbaiki dengan AI"
+                        />
                       </div>
                     </div>
 
@@ -2072,12 +2026,12 @@ export default function Welcome() {
                         Bukti Aktivitas
                       </label>
                       <div className="flex gap-3">
-                        <input 
-                          type="file" 
-                          accept=".png,.jpg,.jpeg" 
-                          capture="environment" 
-                          className="flex-1 rounded-xl border-2 border-gray-200 p-3 text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-indigo-400 dark:file:bg-indigo-900/30 dark:file:text-indigo-300" 
-                          onChange={(e) => handleImage(e)} 
+                        <input
+                          type="file"
+                          accept=".png,.jpg,.jpeg"
+                          capture="environment"
+                          className="flex-1 rounded-xl border-2 border-gray-300 bg-white p-3 text-gray-800 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-700 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 transition-all duration-200 shadow-sm dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:focus:border-indigo-400 dark:file:bg-indigo-600 dark:file:text-white"
+                          onChange={(e) => handleImage(e)}
                         />
                         <button 
                           type="button" 
@@ -2125,15 +2079,18 @@ export default function Welcome() {
                   
                   <div className="space-y-4">
                     <div className="space-y-3">
-                      <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">
-                        Prompt Deskripsi
+                      <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                        💬 Ceritakan Aktivitas Anda Hari Ini
+                        <span className="block text-xs font-normal text-gray-600 dark:text-gray-400 mt-1">
+                          AI akan mengubahnya menjadi logbook aktivitas yang profesional
+                        </span>
                       </label>
                       <textarea
                         value={promptText}
                         onChange={(e) => setPromptText(e.target.value)}
-                        placeholder="Ketikkan deskripsi kegiatan Anda di sini... Contoh: Hari ini saya belajar React di Telkomsigma, membuat komponen untuk sistem HRIS"
+                        placeholder="Contoh: Hari ini saya coding fitur login untuk sistem HRIS di Telkomsigma pakai React dan Laravel. Saya buat komponen authentication, integrasi API backend, dan testing di berbagai browser. Akhirnya berhasil dan bisa login dengan smooth."
                         rows={6}
-                        className="w-full rounded-xl border-2 border-gray-200 p-3 text-gray-900 placeholder-gray-500 focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:border-green-400 dark:focus:ring-green-900/30 resize-none"
+                        className="w-full rounded-xl border-2 border-gray-300 p-4 text-gray-900 placeholder-gray-400 focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all duration-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-green-400 dark:focus:ring-green-900/30 resize-none shadow-sm"
                       />
                     </div>
                     
@@ -2168,30 +2125,30 @@ export default function Welcome() {
                       </button>
                     </div>
                     
-                      <div className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-5 border border-blue-200 dark:border-blue-700 shadow-sm">
-                        <h4 className="text-sm font-bold text-blue-900 dark:text-blue-100 mb-3 flex items-center gap-2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <div className="bg-indigo-100 dark:bg-indigo-900/40 rounded-xl p-5 border-2 border-indigo-300 dark:border-indigo-600 shadow-md">
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-indigo-100 mb-3 flex items-center gap-2">
+                          <div className="w-2 h-2 bg-indigo-600 dark:bg-indigo-400 rounded-full"></div>
                           Tips Penggunaan Gemini AI:
                         </h4>
-                        <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-2">
+                        <ul className="text-sm text-gray-800 dark:text-indigo-100 space-y-2 font-semibold">
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600 dark:text-blue-400 mt-1">•</span>
+                            <span className="text-indigo-600 dark:text-indigo-300 mt-1 font-bold">•</span>
                             <span>Ketikkan deskripsi kegiatan dalam bahasa natural</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600 dark:text-blue-400 mt-1">•</span>
-                            <span>Gemini AI akan otomatis mengisi form dengan judul yang rapih</span>
+                            <span className="text-indigo-600 dark:text-indigo-300 mt-1 font-bold">•</span>
+                            <span>Gemini AI akan otomatis membuat deskripsi yang profesional</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600 dark:text-blue-400 mt-1">•</span>
-                            <span>Judul akan dibuat semi formal dan konsisten</span>
+                            <span className="text-indigo-600 dark:text-indigo-300 mt-1 font-bold">•</span>
+                            <span>Deskripsi akan dibuat lengkap, detail, dan formal</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600 dark:text-blue-400 mt-1">•</span>
+                            <span className="text-indigo-600 dark:text-indigo-300 mt-1 font-bold">•</span>
                             <span>Anda bisa edit hasil generate sebelum simpan</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="text-blue-600 dark:text-blue-400 mt-1">•</span>
+                            <span className="text-indigo-600 dark:text-indigo-300 mt-1 font-bold">•</span>
                             <span>Gunakan kata kunci spesifik untuk hasil yang lebih akurat</span>
                           </li>
                         </ul>
@@ -2212,19 +2169,19 @@ export default function Welcome() {
                 Batal
               </button>
               {/* Tombol Simpan Logbook (submit) */}
-              <button 
-                type="submit" 
-                form="log-form" 
+              <button
+                type="submit"
+                form="log-form"
                 disabled={form.processing || !isFormValid() || isGenerating}
                 onClick={() => {
                   if (!isFormValid()) {
                     showToast('Lengkapi semua field yang diperlukan sebelum menyimpan', 'error');
                   }
                 }}
-                className="rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 px-6 py-3 text-sm font-bold text-white hover:from-indigo-600 hover:to-indigo-700 hover:shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-3 shadow-md"
+                className="rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-300 ease-out flex items-center gap-3"
               >
                 <SaveIcon className="h-5 w-5" />
-                <ReactBitsShinyText text={form.processing ? 'Menyimpan...' : 'Simpan'} className="text-white font-bold" />
+                <ReactBitsShinyText text={form.processing ? 'Menyimpan...' : 'Simpan'} className="text-white font-semibold" />
               </button>
             </div>
           </div>
@@ -2368,24 +2325,24 @@ export default function Welcome() {
 
       {/* Toast Notification */}
       {toast && (
-        <div className={`fixed top-4 right-4 z-[1000] rounded-lg border-l-4 px-4 py-3 shadow-lg transition-all duration-300 ${
-          toast.type === 'success' 
-            ? 'bg-green-50 border-green-400 text-green-800 dark:bg-green-900/50 dark:border-green-600 dark:text-green-100' 
-            : 'bg-red-50 border-red-400 text-red-800 dark:bg-red-900/50 dark:border-red-600 dark:text-red-100'
+        <div className={`fixed top-6 right-6 z-[1000] rounded-xl border-2 px-5 py-4 shadow-2xl transition-all duration-300 backdrop-blur-sm ${
+          toast.type === 'success'
+            ? 'bg-green-100 border-green-400 text-green-900 dark:bg-green-900/80 dark:border-green-500 dark:text-green-100'
+            : 'bg-red-100 border-red-400 text-red-900 dark:bg-red-900/80 dark:border-red-500 dark:text-red-100'
         }`}>
           <div className="flex items-center gap-3">
             <div className="flex-shrink-0">
               {toast.type === 'success' ? (
-                <svg className="h-5 w-5 text-green-500 dark:text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="h-6 w-6 text-green-600 dark:text-green-300" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm3.707-9.293a1 1 0 0 0-1.414-1.414L9 10.586 7.707 9.293a1 1 0 0 0-1.414 1.414l2 2a1 1 0 0 0 1.414 0l4-4z" clipRule="evenodd" />
                 </svg>
               ) : (
-                <svg className="h-5 w-5 text-red-500 dark:text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="h-6 w-6 text-red-600 dark:text-red-300" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM8.707 7.293a1 1 0 0 0-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 1 0 1.414 1.414L10 11.414l1.293 1.293a1 1 0 0 0 1.414-1.414L11.414 10l1.293-1.293a1 1 0 0 0-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                 </svg>
               )}
             </div>
-            <span className="text-sm font-semibold">{toast.message}</span>
+            <span className="text-sm font-bold">{toast.message}</span>
           </div>
         </div>
       )}
@@ -2402,6 +2359,36 @@ export default function Welcome() {
             </div>
         </div>
       </footer>
+
+      {/* Floating Button - Chatbot AI (Kanan Bawah) */}
+      <button
+        onClick={() => setShowChatbot(!showChatbot)}
+        className="fixed right-6 bottom-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg hover:shadow-xl hover:scale-110 transition-all duration-300"
+        title="Chat dengan AI"
+      >
+        <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+        </svg>
+        {chatMessages.length > 0 && (
+          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold">
+            {chatMessages.filter(m => m.role === 'assistant').length}
+          </span>
+        )}
+      </button>
+
+      {/* Floating Chatbot Component */}
+      <FloatingChatbot
+        showChatbot={showChatbot}
+        setShowChatbot={setShowChatbot}
+        chatMessages={chatMessages}
+        setChatMessages={setChatMessages}
+        chatInput={chatInput}
+        setChatInput={setChatInput}
+        chatLoading={chatLoading}
+        sendChatMessage={sendChatMessage}
+        clearChat={clearChat}
+        chatEndRef={chatEndRef}
+      />
     </div>
     );
 }

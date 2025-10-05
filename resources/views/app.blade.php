@@ -32,6 +32,11 @@
         @routes
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <script>window.Laravel = { csrfToken: '{{ csrf_token() }}' };</script>
+
+        <!-- Google API for Drive Picker -->
+        <script src="https://apis.google.com/js/api.js"></script>
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
+
         <script>
             // Dark mode initialization
             (function() {

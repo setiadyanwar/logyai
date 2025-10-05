@@ -1,5 +1,4 @@
-// 1. PERBAIKAN TYPEWRITER COMPONENT
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface TypewriterProps {
   words: string[];
@@ -13,71 +12,61 @@ interface TypewriterProps {
 const ReactBitsTypewriter: React.FC<TypewriterProps> = ({
   words,
   loop = true,
-  delaySpeed = 1000,
-  deleteSpeed = 30,
-  typeSpeed = 60,
+  delaySpeed = 2000,
+  deleteSpeed = 50,
+  typeSpeed = 100,
   className = ''
 }) => {
+  const [displayText, setDisplayText] = useState('');
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
-  const [currentText, setCurrentText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isWaiting, setIsWaiting] = useState(false);
+  const [charIndex, setCharIndex] = useState(0);
+  const timeoutRef = useRef<NodeJS.Timeout>();
 
-  const typeNext = useCallback(() => {
-    if (!words.length || isWaiting) return;
-    
+  useEffect(() => {
+    if (!words || words.length === 0) return;
+
     const currentWord = words[currentWordIndex];
-    
-    if (!isDeleting) {
-      // Typing
-      if (currentText.length < currentWord.length) {
-        setCurrentText(currentWord.slice(0, currentText.length + 1));
+
+    const animate = () => {
+      if (!isDeleting) {
+        // Typing
+        if (charIndex < currentWord.length) {
+          setDisplayText(currentWord.substring(0, charIndex + 1));
+          setCharIndex(charIndex + 1);
+          timeoutRef.current = setTimeout(animate, typeSpeed);
+        } else {
+          // Finished typing, wait then start deleting
+          timeoutRef.current = setTimeout(() => {
+            setIsDeleting(true);
+          }, delaySpeed);
+        }
       } else {
-        // Finished typing, wait then start deleting
-        setIsWaiting(true);
-        setTimeout(() => {
-          setIsWaiting(false);
-          setIsDeleting(true);
-        }, delaySpeed);
-      }
-    } else {
-      // Deleting
-      if (currentText.length > 0) {
-        setCurrentText(currentText.slice(0, -1));
-      } else {
-        // Finished deleting, move to next word
-        setIsDeleting(false);
-        if (loop) {
-          setCurrentWordIndex((prev) => (prev + 1) % words.length);
+        // Deleting
+        if (charIndex > 0) {
+          setDisplayText(currentWord.substring(0, charIndex - 1));
+          setCharIndex(charIndex - 1);
+          timeoutRef.current = setTimeout(animate, deleteSpeed);
+        } else {
+          // Finished deleting, move to next word
+          setIsDeleting(false);
+          setCurrentWordIndex((currentWordIndex + 1) % words.length);
         }
       }
-    }
-  }, [currentText, currentWordIndex, isDeleting, words, loop, delaySpeed, isWaiting]);
+    };
 
-  useEffect(() => {
-    if (!words.length || isWaiting) return;
+    timeoutRef.current = setTimeout(animate, 100);
 
-    const interval = setInterval(() => {
-      typeNext();
-    }, isDeleting ? deleteSpeed : typeSpeed);
-
-    return () => clearInterval(interval);
-  }, [typeNext, isDeleting, deleteSpeed, typeSpeed, isWaiting]);
-
-  // Initialize with first character
-  useEffect(() => {
-    if (words.length > 0 && currentText === '') {
-      setCurrentText('');
-      // Start typing after a small delay
-      setTimeout(() => {
-        setCurrentText(words[0].charAt(0) || '');
-      }, 100);
-    }
-  }, [words]);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [charIndex, currentWordIndex, isDeleting, words, delaySpeed, deleteSpeed, typeSpeed]);
 
   return (
     <span className={`${className} inline-flex items-center min-h-[1.5em]`}>
-      <span className="mr-1">{currentText || '\u00A0'}</span>
+      <span className="mr-1">{displayText || '\u00A0'}</span>
       <span className="w-0.5 h-4 bg-current animate-pulse" />
     </span>
   );
