@@ -610,13 +610,13 @@ export default function Welcome() {
       setCameraOpen(true);
       
       try {
-        // Request camera access
-        const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: { ideal: "environment" },
-            width: { ideal: 640, min: 320, max: 1920 },
-            height: { ideal: 480, min: 240, max: 1080 }
-          } 
+        // Request camera access - use "user" for front camera (laptop camera)
+        const mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user", // Front camera (laptop/selfie camera)
+            width: { ideal: 1280, min: 640, max: 1920 },
+            height: { ideal: 720, min: 480, max: 1080 }
+          }
         });
         
         setStream(mediaStream);
@@ -1811,7 +1811,6 @@ export default function Welcome() {
                                     dosen_penggerak: tempFormData.dosen_penggerak || '',
                                     tipe_penyelenggaraan: tempFormData.tipe_penyelenggaraan || 'hybrid',
                                     lokasi: tempFormData.lokasi || '',
-                                    judul: tempFormData.judul || '',
                                     keterangan: tempFormData.keterangan || '',
                                     bukti: tempFormData.bukti || null,
                                     return_home: tempFormData.return_home ?? true,
@@ -2190,8 +2189,8 @@ export default function Welcome() {
 
             {/* Camera Modal */}
       {cameraOpen && (
-        <div 
-          className="fixed inset-0 z-[300] flex items-center justify-center bg-black p-0 md:p-4" 
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black p-0 md:p-4" 
           role="dialog" 
           aria-modal="true"
           onClick={(e) => {
